@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Adv WS Player</title>
+    <style>
+        :root {
+            --bg-color: #0f0f0f;
+            --card-bg: #1a1a1a;
+            --accent: #03dac6;
+            --text: #e0e0e0;
+            --action-color: #bb86fc;
+            --response-color: #4caf50;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* Верхня панель введення */
+        .header-panel {
+            display: flex;
+            gap: 10px;
+            max-width: 1000px;
+            width: 100%;
+            margin: 0 auto 20px auto;
+        }
+
+        input, select {
+            background: var(--card-bg);
+            border: 1px solid #333;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        input { flex-grow: 1; }
+        select { color: var(--accent); font-weight: bold; }
+
+        button {
+            padding: 10px 25px;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        button:hover:not(:disabled) { background: #018786; transform: translateY(-2px); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* Основний контейнер */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 300px;
+            gap: 20px;
+            flex-grow: 1;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            min-height: 0; /* Важливо для overflow */
+            max-height: 500px;
+        }
+
+        .log-container {
+            background: var(--card-bg);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #222;
+            overflow: hidden;
+        }
+
+        .log-header {
+            padding: 10px 15px;
+            background: #252525;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #333;
+        }
+
+        .log-box {
+            padding: 15px;
+            overflow-y: auto;
+            flex-grow: 1;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+        }
+
+        /* Стилі записів у логах */
+        .entry { margin-bottom: 8px; line-height: 1.4; border-bottom: 1px solid #222; padding-bottom: 4px; }
+        .time { color: #666; font-size: 11px; margin-right: 5px; }
+        .act-tag { color: var(--action-color); }
+        .res-tag { color: var(--response-color); }
+
+        /* Картка плеєра */
+        .player-card {
+            background: linear-gradient(145deg, #1e1e1e, #121212);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            height: fit-content;
+        }
+
+        .track-info { text-align: center; margin-bottom: 20px; width: 100%; }
+        #current-track { 
+            font-weight: bold; 
+            font-size: 14px; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            display: block;
+        }
+        #player-status { color: var(--accent); font-size: 12px; }
+
+        .progress-container { width: 100%; margin: 15px 0; }
+        .placeholder-bar {
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            position: relative;
+        }
+        .placeholder-fill {
+            position: absolute;
+            width: 0%;
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            box-shadow: 0 0 8px var(--accent);
+            transition: width 3s ease-out;
+        }
+
+        .controls { display: flex; gap: 15px; align-items: center; }
+        .btn-circle {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-panel">
+        <select id="actionSelect">
+            <option value="play">Play</option>
+            <option value="playlist">Playlist</option>
+        </select>
+        <input type="text" id="messageInput" placeholder="URL або назва треку...">
+        <button id="sendBtn" onclick="sendInputMessage()">Додати</button>
+    </div>
+
+    <div class="main-grid">
+        <div class="log-container">
+            <div class="log-header" style="color: var(--action-color)">Actions Log</div>
+            <div id="action-log" class="log-box"></div>
+        </div>
+
+        <div class="log-container">
+            <div class="log-header" style="color: var(--response-color)">Response Log</div>
+            <div id="response-log" class="log-box"></div>
+        </div>
+
+        <div class="player-card">
+            <div class="track-info">
+                <span id="player-status">Очікування...</span>
+                <span id="current-track">Немає активного треку</span>
+            </div>
+
+            <div class="progress-container">
+                <div class="placeholder-bar">
+                    <div id="progressBarFill" class="placeholder-fill"></div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="btn-circle" onclick="sendControl('stop')">⏹</button>
+                <button class="btn-circle" id="playPauseBtn" onclick="sendControl('pause')">⏯</button>
+                <button class="btn-circle" onclick="sendControl('next')">⏭</button>
+            </div>
+
+            <div style="margin-top: 15px; font-size: 11px; color: #555;">
+                Queue: <span id="queue-count">0/0</span> | Passive: <span id="passive-count">0/0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const actionLog = document.getElementById('action-log');
+        const responseLog = document.getElementById('response-log');
+        const input = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        let socket;
+
+        function connect() {
+            socket = new WebSocket('ws://localhost:8765');
+
+            socket.onopen = () => {
+                addLog(responseLog, "З'єднання встановлено", "res-tag");
+                sendBtn.disabled = false;
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleServerData(data);
+                } catch (e) {
+                    addLog(responseLog, event.data, "res-tag");
+                }
+            };
+
+            socket.onclose = () => {
+                addLog(responseLog, "З'єднання розірвано. Перепідключення...", "res-tag");
+                sendBtn.disabled = true;
+                setTimeout(connect, 3000);
+            };
+        }
+
+        function updatePlayerUI(data) {
+            const isStopped = data.status === "Stopped";
+
+            document.getElementById('queue-count').innerText = isStopped ? '0/0' : `${(data.active_size || 0) > 0 ? data.active_index + 1 : 0}/${data.active_size || 0}`;
+            document.getElementById('passive-count').innerText = isStopped ? '0/0' : `${(data.passive_size || 0) > 0 ? data.passive_index + 1 : 0}/${data.passive_size || 0}`;
+            document.getElementById('player-status').innerText = isStopped ? "Очікування..." : (data.status || "---");
+
+            const trackTitle = !isStopped && data.metadata?.title ? data.metadata.title : "Немає активного треку";
+            document.getElementById('current-track').innerText = trackTitle;
+
+        }
+        
+        function handleServerData(data) {
+            if (data.type === "action") {
+                addLog(actionLog, `${data.action} -> ${data.status || 'N/A'}`, "act-tag");
+                if (data.action === "Next" || data.action === "Stop/End") {
+                    const progressBar = document.getElementById('progressBarFill');
+
+                    if (progressBar) {
+                        progressBar.style.width = "0%";
+                    }
+                }
+            } else if (data.type === "response") {
+                addLog(responseLog, `Status: ${data.status} | Mode: ${data.mode}`, "res-tag");
+            } else if (data.type === "process") {
+                const progressBar = document.getElementById('progressBarFill');
+        
+                if (progressBar && data.percent !== undefined) {
+                    const width = Math.min(Math.max(data.percent, 0), 100);
+                    progressBar.style.width = width + "%";
+                }
+                return
+            } else if (data.type === "debug") {
+                return
+            }
+        
+            updatePlayerUI(data);
+        }
+
+        function sendInputMessage() {
+            const cmd = document.getElementById('actionSelect').value;
+            const url = input.value;
+            if (url) {
+                sendCommand({ cmd: cmd, url: url });
+                input.value = '';
+            }
+        }
+
+        function sendControl(actionName) {
+            sendCommand({ cmd: "control", action: actionName });
+        }
+
+        function sendCommand(obj) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify(obj));
+            }
+        }
+
+        function addLog(container, text, className) {
+            const div = document.createElement('div');
+            div.className = 'entry';
+            const now = new Date().toLocaleTimeString();
+            div.innerHTML = `<span class="time">[${now}]</span><span class="${className}">${text}</span>`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        input.addEventListener("keypress", (e) => { if (e.key === "Enter") sendInputMessage(); });
+
+        connect();
+    </script>
+</body>
+</html>
