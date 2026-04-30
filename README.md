@@ -43,7 +43,7 @@
 ```bash
 sudo apt update
 sudo apt install mpv python3-pip python3-dbus python3-gi gir1.2-glib-2.0 libgirepository1.0-dev
-pip install pygobject==3.48.2 websockets pydbus mutagen gbulb yt-dlp
+pip install pygobject==3.48.2 websockets pydbus mutagen gbulb yt-dlp aiohttp
 ```
 
 > Рекомендується використовувати віртуальне середовище (`venv`).

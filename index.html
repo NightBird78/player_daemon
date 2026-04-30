@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
     <meta charset="UTF-8">
     <title>Adv WS Player</title>
     <style>
@@ -152,6 +153,13 @@
             justify-content: center;
             font-size: 18px;
         }
+        .btn-circle .mdi {
+            font-size: 24px; /* Розмір іконки */
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
     </style>
 </head>
 <body>
@@ -189,9 +197,15 @@
             </div>
 
             <div class="controls">
-                <button class="btn-circle" onclick="sendControl('stop')">⏹</button>
-                <button class="btn-circle" id="playPauseBtn" onclick="sendControl('pause')">⏯</button>
-                <button class="btn-circle" onclick="sendControl('next')">⏭</button>
+                <button class="btn-circle" onclick="sendControl('stop')">
+                    <span class="mdi mdi-stop"></span>
+                </button>
+                <button class="btn-circle" id="playPauseBtn" onclick="sendControl('pause')">
+                    <span class="mdi mdi-play-pause"></span>
+                </button>
+                <button class="btn-circle" onclick="sendControl('next')">
+                    <span class="mdi mdi-skip-next"></span>
+                </button>
             </div>
 
             <div style="margin-top: 15px; font-size: 11px; color: #555;">
@@ -208,7 +222,7 @@
         let socket;
 
         function connect() {
-            socket = new WebSocket('ws://localhost:8765/ws');
+            socket = new WebSocket(`ws://${window.location.host}/ws`);
 
             socket.onopen = () => {
                 addLog(responseLog, "З'єднання встановлено", "res-tag");
