@@ -3,10 +3,10 @@ import json
 import socket
 import subprocess
 from collections import deque
-
+from aiohttp import web
+import aiohttp
 from mutagen.easyid3 import EasyID3
 import asyncio
-import websockets
 
 from pydbus import SessionBus
 from pydbus.generic import signal
@@ -17,7 +17,7 @@ import gbulb
 gbulb.install()
 
 SOCKET = "/tmp/mpv-ipc.sock"
-WS_PORT = 8765
+PORT = 8765
 
 bus = SessionBus()
 loop = asyncio.get_event_loop()
@@ -224,7 +224,7 @@ class Player:
     # =========================
     # Navigation
     # =========================
-    def Next(self, *, ws_client: websockets.ServerConnection = None):
+    def Next(self, *, ws_client=None):
         if self.PlaybackStatus == "Playing":
             self.PlayPause(broadcast=False)
 
@@ -301,9 +301,7 @@ class Player:
     # =========================
     # Controls
     # =========================
-    def PlayPause(
-        self, *, ws_client: websockets.ServerConnection = None, broadcast: bool = True
-    ):
+    def PlayPause(self, *, ws_client=None, broadcast: bool = True):
         if len(self.active_queue) == 0 and len(self.passive_queue) == 0:
             return
 
@@ -339,7 +337,7 @@ class Player:
                 )
             )
 
-    def Stop(self, *, ws_client: websockets.ServerConnection = None):
+    def Stop(self, *, ws_client=None):
         self.mpv.send({"command": ["quit"]})
         self.PlaybackStatus = "Stopped"
 
@@ -405,30 +403,68 @@ def load_youtube_playlist(url):
 # =========================
 # WebSocket server
 # =========================
-async def handler(ws: websockets.ServerConnection):
-    meta = {}
-    for k, v in player.Metadata.items():
-        meta[k.split(":")[1]] = v.unpack()
-    await ws.send(
-        json.dumps(
-            {
-                "type": "action",
-                "mode": player.mode,
-                "action": "init",
-                "status": player.PlaybackStatus,
-                "active_size": len(player.active_queue),
-                "active_index": player.active_index,
-                "passive_size": len(player.passive_queue),
-                "passive_index": player.passive_index,
-                "metadata": meta,
-            }
-        )
-    )
+async def ws_broadcast(data: dict, _except=None):
+    for ws in connected_clients:
+        if _except and ws is _except:
+            continue
+        await ws.send_str(json.dumps(data))
+
+
+async def poll_proc():
+    while True:
+        await asyncio.sleep(5)
+        if not player.proc:
+            continue
+        if player.proc.poll() is None:
+            await ws_broadcast(
+                {
+                    "type": "process",
+                    "percent": player.mpv.get_property("percent-pos"),
+                }
+            )
+            continue
+        player.proc = None
+        if player.PlaybackStatus == "Stopped":
+            continue
+
+        player.Next()
+
+
+async def handle_index(request):
+    """Віддаємо файл вручну, щоб уникнути помилки sendfile в gbulb"""
+    try:
+        with open("./index.html", "rb") as f:
+            content = f.read()
+        return web.Response(body=content, content_type="text/html")
+    except FileNotFoundError:
+        return web.Response(text="index.html не знайдено", status=404)
+
+
+async def websocket_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
     connected_clients.add(ws)
+
+    meta = {k.split(":")[1]: v.unpack() for k, v in player.Metadata.items()}
+    await ws.send_json(
+        {
+            "type": "action",
+            "mode": player.mode,
+            "action": "init",
+            "status": player.PlaybackStatus,
+            "metadata": meta,
+            "active_size": len(player.active_queue),
+            "active_index": player.active_index,
+            "passive_size": len(player.passive_queue),
+            "passive_index": player.passive_index,
+        }
+    )
+
     try:
         async for msg in ws:
-            try:
-                data = json.loads(msg)
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                data = json.loads(msg.data)
                 cmd = data.get("cmd")
 
                 # ACTIVE playback
@@ -461,7 +497,7 @@ async def handler(ws: websockets.ServerConnection):
                 meta = {}
                 for k, v in player.Metadata.items():
                     meta[k.split(":")[1]] = v.unpack()
-                await ws.send(
+                await ws.send_str(
                     json.dumps(
                         {
                             "type": "response",
@@ -476,50 +512,27 @@ async def handler(ws: websockets.ServerConnection):
                     )
                 )
 
-            except Exception as e:
-                await ws.send(json.dumps({"error": str(e)}))
-    except websockets.exceptions.ConnectionClosedError:
-        pass
     finally:
         connected_clients.remove(ws)
+    return ws
 
 
-async def ws_broadcast(data: dict, _except: websockets.ServerConnection = None):
-    for ws in connected_clients:
-        if _except and ws.id == _except.id:
-            continue
-        await ws.send(json.dumps(data))
+async def start_unified_server():
+    """Запускає все на одному порту"""
+    app = web.Application()
+    app.router.add_get("/", handle_index)
+    app.router.add_get("/ws", websocket_handler)
 
-
-async def start_ws_server():
-    async with websockets.serve(handler, "0.0.0.0", WS_PORT):
-        await asyncio.Future()
-
-
-async def poll_proc():
-    while True:
-        await asyncio.sleep(5)
-        if not player.proc:
-            continue
-        if player.proc.poll() is None:
-            await ws_broadcast(
-                {
-                    "type": "process",
-                    "percent": player.mpv.get_property("percent-pos"),
-                }
-            )
-            continue
-        player.proc = None
-        if player.PlaybackStatus == "Stopped":
-            continue
-
-        player.Next()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
 
 
 # =========================
 # start WS thread
 # =========================
-loop.create_task(start_ws_server())
+loop.create_task(start_unified_server())
 loop.create_task(poll_proc())
 
 # =========================

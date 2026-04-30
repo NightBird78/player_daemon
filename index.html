@@ -25,7 +25,6 @@
             box-sizing: border-box;
         }
 
-        /* Верхня панель введення */
         .header-panel {
             display: flex;
             gap: 10px;
@@ -59,7 +58,6 @@
         button:hover:not(:disabled) { background: #018786; transform: translateY(-2px); }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        /* Основний контейнер */
         .main-grid {
             display: grid;
             grid-template-columns: 1fr 1fr 300px;
@@ -68,7 +66,7 @@
             max-width: 1200px;
             width: 100%;
             margin: 0 auto;
-            min-height: 0; /* Важливо для overflow */
+            min-height: 0;
             max-height: 500px;
         }
 
@@ -98,13 +96,11 @@
             font-size: 13px;
         }
 
-        /* Стилі записів у логах */
         .entry { margin-bottom: 8px; line-height: 1.4; border-bottom: 1px solid #222; padding-bottom: 4px; }
         .time { color: #666; font-size: 11px; margin-right: 5px; }
         .act-tag { color: var(--action-color); }
         .res-tag { color: var(--response-color); }
 
-        /* Картка плеєра */
         .player-card {
             background: linear-gradient(145deg, #1e1e1e, #121212);
             border-radius: 16px;
@@ -212,7 +208,7 @@
         let socket;
 
         function connect() {
-            socket = new WebSocket('ws://localhost:8765');
+            socket = new WebSocket('ws://localhost:8765/ws');
 
             socket.onopen = () => {
                 addLog(responseLog, "З'єднання встановлено", "res-tag");
