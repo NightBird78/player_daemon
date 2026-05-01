@@ -110,7 +110,7 @@ class MPRISPlayer(BasePlayer):
                 self.active_index += 1
                 self.play_current()
 
-                (
+                asyncio.create_task(
                     self.broadcast_state(
                         "Next",
                         ws_client=ws_client,
@@ -132,7 +132,7 @@ class MPRISPlayer(BasePlayer):
                 self.passive_index += 1
                 self.play_current()
 
-                (
+                asyncio.create_task(
                     self.broadcast_state(
                         "Next",
                         ws_client=ws_client,
@@ -161,7 +161,11 @@ class MPRISPlayer(BasePlayer):
             [],
         )
 
-        self.broadcast_state("PlayPause", ws_client=ws_client, broadcast=broadcast)
+        print(f"{broadcast=}")
+
+        asyncio.create_task(
+            self.broadcast_state("PlayPause", ws_client=ws_client, broadcast=broadcast)
+        )
 
     def Stop(self, *, ws_client=None):
         self.mpv.send({"command": ["quit"]})
@@ -186,7 +190,7 @@ class MPRISPlayer(BasePlayer):
         self.active_index = -1
         self.passive_index = -1
 
-        self.broadcast_state("PlayPause", ws_client=ws_client)
+        asyncio.create_task(self.broadcast_state("PlayPause", ws_client=ws_client))
 
     def Raise(self):
         pass

@@ -1,8 +1,8 @@
 import os
 
 
-MPRIS_SOCKET = r"\\.\pipe\mpv-ipc"
-SMTC_SOCKET = "/tmp/mpv-ipc.sock"
+MPRIS_SOCKET = "/tmp/mpv-ipc.sock"
+SMTC_SOCKET = r"\\.\pipe\mpv-ipc"
 LOCAL_DIR = "~/Music"
 PORT = 8765
 IDENTITY = "YT Python Player"

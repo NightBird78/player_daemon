@@ -32,7 +32,7 @@ async def poll_proc(player):
 
 if __name__ == "__main__":
     player = create_player()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
 
     loop.create_task(start_server(player))
     loop.create_task(poll_proc(player))
