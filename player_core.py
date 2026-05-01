@@ -73,7 +73,7 @@ class Player:
         if not self.proc:
             cleanup_socket()
             self.proc = subprocess.Popen(
-                ["mpv", "--no-video", f"--input-ipc-server={SOCKET}", url]
+                ["mpv", "--no-video", f"--input-ipc-server={}", url]
             )
         else:
             self.mpv.send({"command": ["loadfile", url, "replace"]})

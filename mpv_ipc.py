@@ -1,11 +1,10 @@
 import socket
 import json
 import os
-from config import SOCKET
 
 
 class MPV:
-    def __init__(self, socket_path=SOCKET):
+    def __init__(self, socket_path):
         self.socket_path = socket_path
 
     def send(self, cmd):
