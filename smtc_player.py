@@ -121,13 +121,15 @@ class SMTCPlayer(BasePlayer):
             else:
                 self.Stop()
 
-    def PlayPause(self, ws_client=None):
+    def PlayPause(self, ws_client=None, broadcast=None):
         self.mpv.send({"command": ["cycle", "pause"]})
         self.PlaybackStatus = (
             "Paused" if self.PlaybackStatus == "Playing" else "Playing"
         )
         self.update_smtc()
-        asyncio.create_task(self.broadcast_state("PlayPause", ws_client=ws_client))
+        asyncio.create_task(
+            self.broadcast_state("PlayPause", ws_client=ws_client, broadcast=broadcast)
+        )
 
     def Stop(self, ws_client=None):
         self.mpv.send({"command": ["quit"]})
