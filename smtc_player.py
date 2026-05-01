@@ -7,7 +7,7 @@ from utils import fetch_metadata
 from winsdk.windows.media import MediaPlaybackType
 
 from winsdk.windows.media.playback import MediaPlayer
-from winsdk.windows.media import MediaPlaybackStatus
+from winsdk.windows.media import MediaPlaybackStatus, SystemMediaTransportControlsButton
 
 
 class SMTCPlayer(BasePlayer):
@@ -27,16 +27,19 @@ class SMTCPlayer(BasePlayer):
 
         self.smtc.add_button_pressed(self._handle_button_press)
 
-    def _handle_button_press(self, sender, args):
-        from winsdk.windows.media import SystemMediaTransportControlsButton
+        try:
+            self.loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.loop = asyncio.get_event_loop()
 
-        if (
-            args.button == SystemMediaTransportControlsButton.PLAY
-            or args.button == SystemMediaTransportControlsButton.PAUSE
+    def _handle_button_press(self, sender, args):
+        if args.button in (
+            SystemMediaTransportControlsButton.PLAY,
+            SystemMediaTransportControlsButton.PAUSE,
         ):
-            self.PlayPause()
+            self.loop.call_soon_threadsafe(self.PlayPause)
         elif args.button == SystemMediaTransportControlsButton.NEXT:
-            self.Next()
+            self.loop.call_soon_threadsafe(self.Next)
 
     def update_smtc(self):
         updater = self.smtc.display_updater

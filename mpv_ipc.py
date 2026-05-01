@@ -2,6 +2,7 @@ import socket
 import json
 import os
 import sys
+import time
 
 
 class MPV:
@@ -9,15 +10,21 @@ class MPV:
         self.socket_path = socket_path
 
     def _send_windows(self, cmd):
-        try:
-            with open(self.socket_path, "r+b", buffering=0) as pipe:
-                payload = (json.dumps(cmd) + "\n").encode()
-                pipe.write(payload)
-                response = pipe.readline().decode()
-                return json.loads(response)
-        except Exception as e:
-            print(f"Windows IPC Error: {e}")
-            return None
+        for _ in range(10):
+            try:
+                with open(self.socket_path, "r+b", buffering=0) as pipe:
+                    payload = (json.dumps(cmd) + "\n").encode()
+                    pipe.write(payload)
+                    response = pipe.readline().decode()
+                    return json.loads(response)
+            except FileNotFoundError:
+                time.sleep(0.2)
+                continue
+            except Exception as e:
+                print(f"Windows IPC Error: {e}")
+                return None
+        print("Не вдалося знайти пайп mpv після 10 спроб")
+        return None
 
     def _send_unix(self, cmd):
         try:
