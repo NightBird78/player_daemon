@@ -1,7 +1,7 @@
 import asyncio
 
 # import gbulb
-from pydbus import SessionBus
+# from pydbus import SessionBus
 
 # from player_core import Player
 from server import start_server, ws_broadcast
@@ -33,10 +33,6 @@ async def poll_proc(player):
 if __name__ == "__main__":
     player = create_player()
     loop = asyncio.get_event_loop()
-    bus = SessionBus()
-    bus.publish(
-        "org.mpris.MediaPlayer2.MyPythonApp", ("/org/mpris/MediaPlayer2", player)
-    )
 
     loop.create_task(start_server(player))
     loop.create_task(poll_proc(player))

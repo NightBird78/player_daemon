@@ -15,9 +15,17 @@ def create_player():
             import gbulb
 
             gbulb.install()
+            from pydbus import SessionBus
             from mpris_player import MPRISPlayer
 
-            return MPRISPlayer()
+            player = MPRISPlayer()
+            bus = SessionBus()
+            bus.publish(
+                "org.mpris.MediaPlayer2.MyPythonApp",
+                ("/org/mpris/MediaPlayer2", player),
+            )
+
+            return player
         case _:
             raise OSError(f"Платформа {sys.platform} не підтримується")
 
