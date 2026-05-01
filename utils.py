@@ -1,7 +1,6 @@
 import subprocess
 import json
 from mutagen.easyid3 import EasyID3
-from gi.repository import GLib
 
 
 def load_youtube_playlist(url):

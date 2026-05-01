@@ -4,23 +4,27 @@ from mpv_ipc import MPV
 from config import SMTC_SOCKET, cleanup_socket
 from base_player import BasePlayer
 from utils import fetch_metadata
-from winsdk.windows.media import (
-    SystemMediaTransportControls,
-    SystemMediaTransportControlsProperty,
-)
+from winsdk.windows.media import MediaPlaybackType
+
+from winrt.windows.media.playback import MediaPlayer
 from winsdk.windows.media import MediaPlaybackStatus
 
 
 class SMTCPlayer(BasePlayer):
     def __init__(self):
         super().__init__()
-        self.mpv = MPV()
+        self.mpv = MPV(SMTC_SOCKET)
         self.proc = None
-        # Ініціалізація SMTC (потрібне вікно або фоновий потік)
-        self.smtc = SystemMediaTransportControls.get_for_current_view()
+        self._dummy_player = MediaPlayer()
+        self.smtc = self._dummy_player.system_media_transport_controls
+
         self.smtc.is_play_enabled = True
         self.smtc.is_pause_enabled = True
         self.smtc.is_next_enabled = True
+
+        self.smtc.display_updater.type = MediaPlaybackType.MUSIC
+        self.smtc.display_updater.update()
+
         self.smtc.add_button_pressed(self._handle_button_press)
 
     def _handle_button_press(self, sender, args):
@@ -36,7 +40,7 @@ class SMTCPlayer(BasePlayer):
 
     def update_smtc(self):
         updater = self.smtc.display_updater
-        updater.type = 1  # Music
+        updater.type = MediaPlaybackType.MUSIC
         updater.music_properties.title = self.Metadata["title"]
         updater.music_properties.artist = self.Metadata["artist"][0]
         updater.update()
