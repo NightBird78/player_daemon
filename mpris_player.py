@@ -3,13 +3,14 @@ from collections import deque
 from gi.repository import GLib
 from pydbus.generic import signal
 from mpv_ipc import MPV
+from base_player import BasePlayer
 from utils import fetch_metadata
 from config import MPRIS_SOCKET, IDENTITY, cleanup_socket
 from server import ws_broadcast
 import asyncio
 
 
-class MPRISPlayer:
+class MPRISPlayer(BasePlayer):
     PropertiesChanged = signal()
 
     dbus = """
@@ -83,45 +84,8 @@ class MPRISPlayer:
         else:
             self.mpv.send({"command": ["loadfile", url, "replace"]})
 
-        # self.PlaybackStatus = "Playing"
         self.PlayPause(broadcast=False)
         self._update_mpris_metadata(meta, {"CanGoNext": True})
-
-    # =========================
-    # ACTIVE queue (priority)
-    # =========================
-    def add_active(self, item):
-        self.active_queue.append(item)
-
-        self.mode = "active"
-        # self.active_index = len(self.active_queue) - 1
-        if self.passive_index == -1 and self.active_index == -1:
-            self.active_index = 0
-            self.play_current()
-
-    def set_active_queue(self, items):
-        self.active_queue = deque(items)
-        self.active_index = 0
-
-        self.mode = "active"
-        self.play_current()
-
-    # =========================
-    # PASSIVE queue (fallback)
-    # =========================
-    def add_passive(self, item):
-        self.passive_queue.append(item)
-
-        if self.mode == "passive" and self.PlaybackStatus != "Playing":
-            # self.passive_index = len(self.passive_queue) - 1
-            self.play_current()
-
-    def set_passive_queue(self, items):
-        self.passive_queue = deque(items)
-
-        if self.mode == "passive":
-            self.passive_index = 0
-            self.play_current()
 
     # =========================
     # Navigation
@@ -158,7 +122,7 @@ class MPRISPlayer:
                             "active_index": self.active_index,
                             "passive_size": len(self.passive_queue),
                             "passive_index": self.passive_index,
-                            "metadata": meta,
+                            "metadata": self.get_meta(),
                         },
                         ws_client,
                     )
@@ -178,9 +142,6 @@ class MPRISPlayer:
                 self.passive_index += 1
                 self.play_current()
 
-                meta = {}
-                for k, v in self.Metadata.items():
-                    meta[k.split(":")[1]] = v.unpack()
                 asyncio.create_task(
                     ws_broadcast(
                         {
@@ -193,7 +154,7 @@ class MPRISPlayer:
                             "active_index": self.active_index,
                             "passive_size": len(self.passive_queue),
                             "passive_index": self.passive_index,
-                            "metadata": meta,
+                            "metadata": self.get_meta(),
                         },
                         ws_client,
                     )
@@ -221,9 +182,6 @@ class MPRISPlayer:
         )
 
         if broadcast:
-            meta = {}
-            for k, v in self.Metadata.items():
-                meta[k.split(":")[1]] = v.unpack()
             asyncio.create_task(
                 ws_broadcast(
                     {
@@ -234,7 +192,7 @@ class MPRISPlayer:
                         "active_index": self.active_index,
                         "passive_size": len(self.passive_queue),
                         "passive_index": self.passive_index,
-                        "metadata": meta,
+                        "metadata": self.get_meta(),
                     },
                     ws_client,
                 )

@@ -42,3 +42,36 @@ class BasePlayer:
         if self.mode == "passive" and 0 <= self.passive_index < len(self.passive_queue):
             return self.passive_queue[self.passive_index]
         return None
+
+    def add_active(self, item):
+        self.active_queue.append(item)
+
+        self.mode = "active"
+        # self.active_index = len(self.active_queue) - 1
+        if self.passive_index == -1 and self.active_index == -1:
+            self.active_index = 0
+            self.play_current()
+
+    def set_active_queue(self, items):
+        self.active_queue = deque(items)
+        self.active_index = 0
+
+        self.mode = "active"
+        self.play_current()
+
+    # =========================
+    # PASSIVE queue (fallback)
+    # =========================
+    def add_passive(self, item):
+        self.passive_queue.append(item)
+
+        if self.mode == "passive" and self.PlaybackStatus != "Playing":
+            # self.passive_index = len(self.passive_queue) - 1
+            self.play_current()
+
+    def set_passive_queue(self, items):
+        self.passive_queue = deque(items)
+
+        if self.mode == "passive":
+            self.passive_index = 0
+            self.play_current()
