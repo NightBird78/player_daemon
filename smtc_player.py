@@ -73,7 +73,7 @@ class SMTCPlayer(BasePlayer):
             )
         else:
             self.mpv.send({"command": ["loadfile", url, "replace"]})
-
+        self.mpv.send({"command": ["client_name"]})
         self.PlayPause(broadcast=False)
         self.update_smtc()
 
