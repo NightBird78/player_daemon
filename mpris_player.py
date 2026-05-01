@@ -6,11 +6,10 @@ from mpv_ipc import MPV
 from base_player import BasePlayer
 from utils import fetch_metadata
 from config import MPRIS_SOCKET, IDENTITY, cleanup_socket
-from server import ws_broadcast
 import asyncio
 
 
-class MPRISPlayer(BasePlayer):
+class MPRISPlayer:
     PropertiesChanged = signal()
 
     dbus = """
@@ -34,6 +33,7 @@ class MPRISPlayer(BasePlayer):
     """
 
     def __init__(self):
+        # super().__init__()
         self.mpv = MPV(MPRIS_SOCKET)
         self.proc = None
         self.active_queue = deque()
@@ -43,7 +43,6 @@ class MPRISPlayer(BasePlayer):
         self.mode = "passive"
         # state
         self.Identity = IDENTITY
-        self.CanQuit = False
         self.PlaybackStatus = "Stopped"
         self.CanGoNext = False
         self.CanPlay = True
@@ -160,8 +159,6 @@ class MPRISPlayer(BasePlayer):
             {"PlaybackStatus": self.PlaybackStatus, "CanGoNext": True},
             [],
         )
-
-        print(f"{broadcast=}")
 
         asyncio.create_task(
             self.broadcast_state("PlayPause", ws_client=ws_client, broadcast=broadcast)
