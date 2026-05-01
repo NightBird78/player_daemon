@@ -54,6 +54,9 @@ class SMTCPlayer(BasePlayer):
             self.PlaybackStatus, MediaPlaybackStatus.CLOSED
         )
 
+    def get_meta(self):
+        return {"title": self.Metadata["title"], "artist": self.Metadata["artist"][0]}
+
     def play_current(self):
         url = self.get_current_url()
         if not url:

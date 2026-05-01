@@ -61,6 +61,12 @@ class MPRISPlayer:
             [],
         )
 
+    def get_meta(self):
+        return {
+            "title": self.Metadata["xesam:title"].unpack(),
+            "artist": self.Metadata["xesam:artist"].unpack(),
+        }
+
     def play_current(self):
         url = (
             self.active_queue[self.active_index]
@@ -140,9 +146,6 @@ class MPRISPlayer:
                 self.active_index += 1
                 self.play_current()
 
-                meta = {}
-                for k, v in self.Metadata.items():
-                    meta[k.split(":")[1]] = v.unpack()
                 asyncio.create_task(
                     ws_broadcast(
                         {

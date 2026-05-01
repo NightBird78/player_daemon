@@ -19,13 +19,13 @@ async def ws_broadcast(data, _except=None):
 
 
 async def send_data(ws, player, type, additional: dict = {}):
-    meta = {k.split(":")[1]: v.unpack() for k, v in player.Metadata.items()}
+
     await ws.send_json(
         {
             "type": type,
             "mode": player.mode,
             "status": player.PlaybackStatus,
-            "metadata": meta,
+            "metadata": player.get_meta(),
             "active_size": len(player.active_queue),
             "active_index": player.active_index,
             "passive_size": len(player.passive_queue),
