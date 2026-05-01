@@ -85,7 +85,17 @@ class SMTCPlayer(BasePlayer):
                 self.active_index += 1
                 self.play_current()
 
-                asyncio.create_task(self.broadcast_state("Next", ws_client))
+                (
+                    asyncio.create_task(
+                        self.broadcast_state(
+                            "Next",
+                            ws_client=ws_client,
+                            additional={
+                                "current": self.active_queue[self.active_index]
+                            },
+                        )
+                    ),
+                )
             else:
                 self.active_queue.clear()
                 self.active_index = -1
@@ -101,7 +111,13 @@ class SMTCPlayer(BasePlayer):
                 self.passive_index += 1
                 self.play_current()
 
-                asyncio.create_task(self.broadcast_state("Next", ws_client))
+                asyncio.create_task(
+                    self.broadcast_state(
+                        "Next",
+                        ws_client=ws_client,
+                        additional={"current": self.passive_queue[self.passive_index]},
+                    ),
+                )
             else:
                 self.Stop()
 
@@ -111,10 +127,10 @@ class SMTCPlayer(BasePlayer):
             "Paused" if self.PlaybackStatus == "Playing" else "Playing"
         )
         self.update_smtc()
-        asyncio.create_task(self.broadcast_state("PlayPause", ws_client))
+        asyncio.create_task(self.broadcast_state("PlayPause", ws_client=ws_client))
 
     def Stop(self, ws_client=None):
         self.mpv.send({"command": ["quit"]})
         self.PlaybackStatus = "Stopped"
         self.update_smtc()
-        asyncio.create_task(self.broadcast_state("Stop", ws_client))
+        asyncio.create_task(self.broadcast_state("Stop", ws_client=ws_client))

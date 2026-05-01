@@ -110,22 +110,12 @@ class MPRISPlayer(BasePlayer):
                 self.active_index += 1
                 self.play_current()
 
-                asyncio.create_task(
-                    ws_broadcast(
-                        {
-                            "type": "action",
-                            "action": "Next",
-                            "from": "active",
-                            "current": self.active_queue[self.active_index],
-                            "status": self.PlaybackStatus,
-                            "active_size": len(self.active_queue),
-                            "active_index": self.active_index,
-                            "passive_size": len(self.passive_queue),
-                            "passive_index": self.passive_index,
-                            "metadata": self.get_meta(),
-                        },
-                        ws_client,
-                    )
+                (
+                    self.broadcast_state(
+                        "Next",
+                        ws_client=ws_client,
+                        additional={"current": self.active_queue[self.active_index]},
+                    ),
                 )
             else:
                 self.active_queue.clear()
@@ -142,22 +132,12 @@ class MPRISPlayer(BasePlayer):
                 self.passive_index += 1
                 self.play_current()
 
-                asyncio.create_task(
-                    ws_broadcast(
-                        {
-                            "type": "action",
-                            "action": "Next",
-                            "from": "passive",
-                            "current": self.passive_queue[self.passive_index],
-                            "status": self.PlaybackStatus,
-                            "active_size": len(self.active_queue),
-                            "active_index": self.active_index,
-                            "passive_size": len(self.passive_queue),
-                            "passive_index": self.passive_index,
-                            "metadata": self.get_meta(),
-                        },
-                        ws_client,
-                    )
+                (
+                    self.broadcast_state(
+                        "Next",
+                        ws_client=ws_client,
+                        additional={"current": self.passive_queue[self.passive_index]},
+                    ),
                 )
             else:
                 self.Stop()
@@ -181,22 +161,7 @@ class MPRISPlayer(BasePlayer):
             [],
         )
 
-        if broadcast:
-            asyncio.create_task(
-                ws_broadcast(
-                    {
-                        "type": "action",
-                        "action": "PlayPause",
-                        "status": self.PlaybackStatus,
-                        "active_size": len(self.active_queue),
-                        "active_index": self.active_index,
-                        "passive_size": len(self.passive_queue),
-                        "passive_index": self.passive_index,
-                        "metadata": self.get_meta(),
-                    },
-                    ws_client,
-                )
-            )
+        self.broadcast_state("PlayPause", ws_client=ws_client, broadcast=broadcast)
 
     def Stop(self, *, ws_client=None):
         self.mpv.send({"command": ["quit"]})
@@ -221,16 +186,7 @@ class MPRISPlayer(BasePlayer):
         self.active_index = -1
         self.passive_index = -1
 
-        asyncio.create_task(
-            ws_broadcast(
-                {
-                    "type": "action",
-                    "action": "Stop/End",
-                    "status": self.PlaybackStatus,
-                },
-                ws_client,
-            )
-        )
+        self.broadcast_state("PlayPause", ws_client=ws_client)
 
     def Raise(self):
         pass
