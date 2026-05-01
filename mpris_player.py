@@ -320,7 +320,7 @@ class Player:
         if broadcast:
             meta = {}
             for k, v in self.Metadata.items():
-                meta[k.split(":")[1]] = v.__str__()
+                meta[k.split(":")[1]] = v.unpack()
             asyncio.create_task(
                 ws_broadcast(
                     {
@@ -440,12 +440,7 @@ async def handle_index(request):
         return web.Response(text="index.html не знайдено", status=404)
 
 
-async def websocket_handler(request):
-    ws = web.WebSocketResponse()
-    await ws.prepare(request)
-
-    connected_clients.add(ws)
-
+async def send_data(ws, player):
     meta = {k.split(":")[1]: v.unpack() for k, v in player.Metadata.items()}
     await ws.send_json(
         {
@@ -461,6 +456,13 @@ async def websocket_handler(request):
         }
     )
 
+
+async def websocket_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    connected_clients.add(ws)
+    await send_data(ws, player)
     try:
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
