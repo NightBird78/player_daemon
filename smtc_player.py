@@ -64,7 +64,7 @@ class SMTCPlayer(BasePlayer):
         self.Metadata = fetch_metadata(url)
 
         if not self.proc:
-            cleanup_socket()
+            cleanup_socket(SMTC_SOCKET)
             self.proc = subprocess.Popen(
                 ["mpv", "--no-video", f"--input-ipc-server={SMTC_SOCKET}", url]
             )
