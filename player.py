@@ -1,7 +1,7 @@
 import sys
 
 
-def create_player():
+def create_player(loop):
     """
     Автоматично вибирає провайдера залежно від операційної системи.
     """
@@ -10,7 +10,7 @@ def create_player():
         case "win32":
             from smtc_player import SMTCPlayer
 
-            return SMTCPlayer()
+            return SMTCPlayer(loop)
         case "linux":
             import gbulb
 
