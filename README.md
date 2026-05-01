@@ -10,6 +10,7 @@
 
 Хотілося мати можливість **"замовити" пісню** своєму комп’ютеру з телефону, не встаючи з дивана.  
 Версія 2.0 отримала підтримку двох черг, локальних MP3-файлів, MPRIS-інтеграцію та покращений веб-інтерфейс.
+Версія 3.0 отримала підтримку windows(smtc)
 
 ### Ключові можливості
 
@@ -39,12 +40,17 @@
 ## Вимоги
 
 ### Обов’язкові залежності
-
+#### linux
 ```bash
 sudo apt update
 sudo apt install mpv python3-pip python3-dbus python3-gi gir1.2-glib-2.0 libgirepository1.0-dev
 pip install pygobject==3.48.2 websockets pydbus mutagen gbulb yt-dlp aiohttp
 ```
+#### windows
+```bash
+pip install websockets mutagen yt-dlp aiohttp winsdk
+```
+також потрібно встановити [mpv](https://mpv.io/) через їхній сайт або через microsoft store
 
 > Рекомендується використовувати віртуальне середовище (`venv`).
 
