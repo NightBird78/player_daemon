@@ -6,7 +6,7 @@ from base_player import BasePlayer
 from utils import fetch_metadata
 from winsdk.windows.media import MediaPlaybackType
 
-from winrt.windows.media.playback import MediaPlayer
+from winsdk.windows.media.playback import MediaPlayer
 from winsdk.windows.media import MediaPlaybackStatus
 
 
