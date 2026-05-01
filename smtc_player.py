@@ -64,14 +64,39 @@ class SMTCPlayer(BasePlayer):
         else:
             self.mpv.send({"command": ["loadfile", url, "replace"]})
 
-        self.PlaybackStatus = "Playing"
+        self.PlayPause(broadcast=False)
         self.update_smtc()
 
-    def Next(self, ws_client=None):
-        # Аналогічна логіка перемикання як в MPRIS
-        # ... (код ідентичний Next в MPRISPlayer)
-        self.play_current()
-        asyncio.create_task(self.broadcast_state("Next", ws_client))
+    def Next(self, *, ws_client=None):
+        if self.PlaybackStatus == "Playing":
+            self.PlayPause(broadcast=False)
+
+        self.update_smtc()
+
+        if self.mode == "active":
+            if self.active_index + 1 < len(self.active_queue):
+                self.active_index += 1
+                self.play_current()
+
+                asyncio.create_task(self.broadcast_state("Next", ws_client))
+            else:
+                self.active_queue.clear()
+                self.active_index = -1
+
+                if self.passive_queue:
+                    self.mode = "passive"
+                    self.Next()
+                else:
+                    self.Stop(ws_client=ws_client)
+
+        else:
+            if self.passive_index + 1 < len(self.passive_queue):
+                self.passive_index += 1
+                self.play_current()
+
+                asyncio.create_task(self.broadcast_state("Next", ws_client))
+            else:
+                self.Stop()
 
     def PlayPause(self, ws_client=None):
         self.mpv.send({"command": ["cycle", "pause"]})
