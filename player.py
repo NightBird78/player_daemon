@@ -12,6 +12,9 @@ def create_player():
 
             return SMTCPlayer()
         case "linux":
+            import gbulb
+
+            gbulb.install()
             from mpris_player import MPRISPlayer
 
             return MPRISPlayer()
