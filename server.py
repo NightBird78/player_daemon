@@ -50,39 +50,58 @@ async def websocket_handler(request):
 
             # ACTIVE playback
             if cmd == "play":
-                player.add_active(data["url"])
+                await player.add_active(data["url"])
 
             elif cmd == "active_playlist":
-                items = utils.load_youtube_playlist(data["url"])
-                player.set_active_queue(items)
+                items = await utils.load_youtube_playlist(data["url"])
+                await player.set_active_queue(items)
 
             # PASSIVE queue
             elif cmd == "playlist":
-                items = utils.load_youtube_playlist(data["url"])
-                player.set_passive_queue(items)
+                asyncio.create_task(
+                    process_playlist_background(data["url"], player, ws)
+                )
+                # async for item_url in utils.stream_links_async(data["url"]):
+                # await player.add_passive(item_url)
+                # if len(player.passive_queue) % 200 == 0:
+                # await send_data(ws, player, "Loading")
 
             elif cmd == "add":
-                player.add_passive(data["url"])
+                await player.add_passive(data["url"])
 
             # controls
             elif cmd == "control":
                 if data["action"] == "next":
-                    player.Next(ws_client=ws)
+                    await player.async_next(ws_client=ws)
 
                 elif data["action"] == "pause":
-                    player.PlayPause(ws_client=ws)
+                    await player.async_play_pause(ws_client=ws)
 
                 elif data["action"] == "stop":
-                    player.Stop(ws_client=ws)
+                    await player.async_stop(ws_client=ws)
 
             await send_data(ws, player, "response")
     connected_clients.remove(ws)
     return ws
 
 
+async def process_playlist_background(url, player, ws):
+    try:
+        async for item_url in utils.stream_links_async(url):
+            await player.add_passive(item_url)
+
+            if len(player.passive_queue) % 10 == 0:
+                await asyncio.sleep(0)
+
+            if len(player.passive_queue) % 200 == 0:
+                await send_data(ws, player, "Loading")
+        await send_data(ws, player, "Loading")
+    except Exception as e:
+        print(f"Помилка завантаження плейлиста: {e}")
+
+
 async def handle_index(request):
     try:
-        # Відкриваємо файл у бінарному режимі
         with open("./index.html", "rb") as f:
             content = f.read()
         return web.Response(body=content, content_type="text/html")

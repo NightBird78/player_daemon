@@ -1,13 +1,7 @@
 import asyncio
 
-# import gbulb
-# from pydbus import SessionBus
-
-# from player_core import Player
 from server import start_server, ws_broadcast
 from player import create_player
-
-# gbulb.install()
 
 
 async def poll_proc(player):
@@ -27,7 +21,7 @@ async def poll_proc(player):
         if player.PlaybackStatus == "Stopped":
             continue
 
-        player.Next()
+        await player.async_next()
 
 
 if __name__ == "__main__":

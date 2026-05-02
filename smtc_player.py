@@ -11,8 +11,7 @@ from winsdk.windows.media import MediaPlaybackStatus, SystemMediaTransportContro
 
 
 class Stop:
-    def __init__(self):
-        pass
+    pass
 
 
 class SMTCPlayer(BasePlayer):
@@ -31,41 +30,21 @@ class SMTCPlayer(BasePlayer):
         self.smtc.display_updater.update()
 
         self.smtc.add_button_pressed(self._handle_button_press)
-
         self.loop = loop
 
     def _handle_button_press(self, sender, args):
-        """Обробник для COM, викликається в окремому потоці"""
         if args.button in (
             SystemMediaTransportControlsButton.PLAY,
             SystemMediaTransportControlsButton.PAUSE,
         ):
-            self.loop.call_soon_threadsafe(self.sync_PlayPause)
+            asyncio.run_coroutine_threadsafe(self.async_play_pause(), self.loop)
         elif args.button == SystemMediaTransportControlsButton.NEXT:
-            self.loop.call_soon_threadsafe(self.sync_Next)
-
-    def sync_PlayPause(self):
-        self._logic_play_pause()
-        self.loop.create_task(self.broadcast_state("PlayPause"))
-
-    def sync_Next(self):
-        self._logic_next()
-        self.loop.create_task(
-            self.broadcast_state(
-                "Next",
-                additional={
-                    "current": self.active_queue[self.active_index]
-                    if self.mode == "active"
-                    else self.passive_queue[self.passive_index]
-                },
-            )
-        )
+            asyncio.run_coroutine_threadsafe(self.async_next(), self.loop)
 
     def update_smtc(self):
         updater = self.smtc.display_updater
-        updater.type = MediaPlaybackType.MUSIC
-        updater.music_properties.title = self.Metadata["title"]
-        updater.music_properties.artist = self.Metadata["artist"][0]
+        updater.music_properties.title = self.Metadata.get("title", "Unknown")
+        updater.music_properties.artist = self.Metadata.get("artist", ["Unknown"])[0]
         updater.update()
 
         status_map = {
@@ -77,84 +56,69 @@ class SMTCPlayer(BasePlayer):
             self.PlaybackStatus, MediaPlaybackStatus.CLOSED
         )
 
-    def get_meta(self):
-        return {"title": self.Metadata["title"], "artist": self.Metadata["artist"][0]}
-
-    def play_current(self):
+    async def play_current(self):
         url = self.get_current_url()
         if not url:
             return
-        self.Metadata = fetch_metadata(url)
+
+        self.Metadata = await fetch_metadata(url)
 
         if not self.proc:
             cleanup_socket(SMTC_SOCKET)
             self.proc = subprocess.Popen(
                 ["mpv", "--no-video", f"--input-ipc-server={SMTC_SOCKET}", url]
             )
-
-            # crutch
             self.mpv.send({"command": ["client_name"]})
             self.mpv.send({"command": ["cycle", "pause"]})
         else:
             self.mpv.send({"command": ["loadfile", url, "replace"]})
-        self.PlayPause(broadcast=False)
+
+        await self.async_play_pause(broadcast=False)
         self.update_smtc()
 
-    def _logic_next(self):
-        if self.PlaybackStatus == "Playing":
-            self._logic_play_pause()
-
-        self.update_smtc()
-
-        if self.mode == "active":
-            if self.active_index + 1 < len(self.active_queue):
-                self.active_index += 1
-                self.play_current()
-
-                return {"current": self.active_queue[self.active_index]}
-            else:
-                self.active_queue.clear()
-                self.active_index = -1
-
-                if self.passive_queue:
-                    self.mode = "passive"
-                    self.Next()
-                else:
-                    return Stop()
-
-        else:
-            if self.passive_index + 1 < len(self.passive_queue):
-                self.passive_index += 1
-                self.play_current()
-
-                return {"current": self.passive_queue[self.passive_index]}
-            else:
-                return Stop()
-
-    def _logic_play_pause(self):
+    async def async_play_pause(self, ws_client=None, broadcast=None):
         self.mpv.send({"command": ["cycle", "pause"]})
         self.PlaybackStatus = (
             "Paused" if self.PlaybackStatus == "Playing" else "Playing"
         )
+
         self.update_smtc()
-
-    def PlayPause(self, ws_client=None, broadcast=None):
-        self._logic_play_pause()
-        asyncio.create_task(
-            self.broadcast_state("PlayPause", ws_client=ws_client, broadcast=broadcast)
+        await self.broadcast_state(
+            "PlayPause", ws_client=ws_client, broadcast=broadcast
         )
 
-    def Next(self, *, ws_client=None):
-        res = self._logic_next()
-        if isinstance(res, Stop):
-            asyncio.create_task(self.Stop(ws_client))
-            return
-        asyncio.create_task(
-            self.broadcast_state("Next", ws_client=ws_client, additional=res)
-        )
+    async def async_next(self, *, ws_client=None):
+        if self.PlaybackStatus == "Playing":
+            self.mpv.send({"command": ["set", "pause", "yes"]})
 
-    def Stop(self, ws_client=None):
+        res = None
+        if self.mode == "active":
+            if self.active_index + 1 < len(self.active_queue):
+                self.active_index += 1
+                await self.play_current()
+                res = {"current": self.active_queue[self.active_index]}
+            else:
+                self.active_queue.clear()
+                self.active_index = -1
+                if self.passive_queue:
+                    self.mode = "passive"
+                    return await self.async_next(ws_client=ws_client)
+                else:
+                    return await self.async_stop(ws_client)
+        else:
+            if self.passive_index + 1 < len(self.passive_queue):
+                self.passive_index += 1
+                await self.play_current()
+                res = {"current": self.passive_queue[self.passive_index]}
+            else:
+                return await self.async_stop(ws_client)
+
+        self.update_smtc()
+        await self.broadcast_state("Next", ws_client=ws_client, additional=res)
+
+    async def async_stop(self, ws_client=None):
         self.mpv.send({"command": ["quit"]})
+        self.proc = None
         self.PlaybackStatus = "Stopped"
         self.update_smtc()
-        asyncio.create_task(self.broadcast_state("Stop", ws_client=ws_client))
+        await self.broadcast_state("Stop", ws_client=ws_client)

@@ -1,22 +1,46 @@
 import subprocess
 import json
 from mutagen.easyid3 import EasyID3
+import asyncio
+import os
 
 
-def load_youtube_playlist(url):
-    output = subprocess.check_output(
-        ["yt-dlp", "--flat-playlist", "-J", url], text=True
-    )
-    data = json.loads(output)
-    return [
-        f"https://www.youtube.com/watch?v={e['id']}"
-        for e in data.get("entries", [])
-        if e.get("id")
+async def stream_links_async(url):
+    """Асинхронно видає посилання з плейлиста по одному"""
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+
+    cmd = [
+        "yt-dlp",
+        "--flat-playlist",
+        "--no-warnings",
+        "--lazy-playlist",
+        "--quiet",
+        "--print",
+        "url",
+        url,
     ]
 
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
 
-def fetch_metadata(url):
-    """Повертає словник з метаданими залежно від типу файлу"""
+    while True:
+        line = await process.stdout.readline()
+        if not line:
+            break
+        link = line.decode().strip()
+        if link:
+            yield link
+
+    await process.wait()
+
+
+async def fetch_metadata(url):
+    """Повертає метадані асинхронно"""
     if url.endswith(".mp3"):
         try:
             audio = EasyID3(url)
@@ -27,6 +51,13 @@ def fetch_metadata(url):
         except:
             return {"title": "Unknown File", "artist": ["Unknown"]}
     else:
-        output = subprocess.check_output(["yt-dlp", "-J", url], text=True)
-        data = json.loads(output)
-        return {"title": data["title"], "artist": [data["uploader"]]}
+        process = await asyncio.create_subprocess_exec(
+            "yt-dlp",
+            "-J",
+            url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await process.communicate()
+        data = json.loads(stdout.decode())
+        return {"title": data.get("title"), "artist": [data.get("uploader", "Unknown")]}
