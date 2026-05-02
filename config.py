@@ -6,6 +6,7 @@ SMTC_SOCKET = r"\\.\pipe\mpv-ipc"
 LOCAL_DIR = "~/Music"
 PORT = 8765
 IDENTITY = "YT Python Player"
+NEXT_QUEUE_LEN = 5
 
 
 def cleanup_socket(socket):

@@ -1,7 +1,5 @@
-import subprocess
 import asyncio
-from mpv_ipc import MPV
-from config import SMTC_SOCKET, cleanup_socket
+from config import SMTC_SOCKET
 from base_player import BasePlayer
 from utils import fetch_metadata
 from winsdk.windows.media import MediaPlaybackType
@@ -16,9 +14,7 @@ class Stop:
 
 class SMTCPlayer(BasePlayer):
     def __init__(self, loop):
-        super().__init__()
-        self.mpv = MPV(SMTC_SOCKET)
-        self.proc = None
+        super().__init__(SMTC_SOCKET)
         self._dummy_player = MediaPlayer()
         self.smtc = self._dummy_player.system_media_transport_controls
 
@@ -64,10 +60,8 @@ class SMTCPlayer(BasePlayer):
         self.Metadata = await fetch_metadata(url)
 
         if not self.proc:
-            cleanup_socket(SMTC_SOCKET)
-            self.proc = subprocess.Popen(
-                ["mpv", "--no-video", f"--input-ipc-server={SMTC_SOCKET}", url]
-            )
+            self.init_mpv(url)
+
             self.mpv.send({"command": ["client_name"]})
             self.mpv.send({"command": ["cycle", "pause"]})
         else:
@@ -89,7 +83,7 @@ class SMTCPlayer(BasePlayer):
 
     async def async_next(self, *, ws_client=None):
         if self.PlaybackStatus == "Playing":
-            self.mpv.send({"command": ["set", "pause", "yes"]})
+            await self.async_play_pause(broadcast=False)
 
         res = None
         if self.mode == "active":
@@ -114,11 +108,13 @@ class SMTCPlayer(BasePlayer):
                 return await self.async_stop(ws_client)
 
         self.update_smtc()
-        await self.broadcast_state("Next", ws_client=ws_client, additional=res)
+        await self.broadcast_state(
+            "Next", ws_client=ws_client, additional=res, update_queue=True
+        )
 
     async def async_stop(self, ws_client=None):
         self.mpv.send({"command": ["quit"]})
         self.proc = None
         self.PlaybackStatus = "Stopped"
         self.update_smtc()
-        await self.broadcast_state("Stop", ws_client=ws_client)
+        await self.broadcast_state("Stop", ws_client=ws_client, update_queue=True)

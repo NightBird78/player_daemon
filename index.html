@@ -115,6 +115,30 @@
             height: fit-content;
         }
 
+        .queue-clouds {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            width: 100%;
+        }
+
+        .queue-item {
+            background: linear-gradient(145deg, #1e1e1e, #121212);
+            border: 1px solid #333;
+            color: var(--text);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            animation: fadeIn 0.3s ease;
+            width: 100%;
+        }
+
         .track-info { text-align: center; margin-bottom: 20px; width: 100%; }
         #current-track { 
             font-weight: bold; 
@@ -183,33 +207,36 @@
             <div class="log-header" style="color: var(--response-color)">Response Log</div>
             <div id="response-log" class="log-box"></div>
         </div>
-
-        <div class="player-card">
-            <div class="track-info">
-                <span id="player-status">Очікування...</span>
-                <span id="current-track">Немає активного треку</span>
-            </div>
-
-            <div class="progress-container">
-                <div class="placeholder-bar">
-                    <div id="progressBarFill" class="placeholder-fill"></div>
+        <div>
+            <div class="player-card">
+                <div class="track-info">
+                    <span id="player-status">Очікування...</span>
+                    <span id="current-track">Немає активного треку</span>
+                </div>
+    
+                <div class="progress-container">
+                    <div class="placeholder-bar">
+                        <div id="progressBarFill" class="placeholder-fill"></div>
+                    </div>
+                </div>
+    
+                <div class="controls">
+                    <button class="btn-circle" onclick="sendControl('stop')">
+                        <span class="mdi mdi-stop"></span>
+                    </button>
+                    <button class="btn-circle" id="playPauseBtn" onclick="sendControl('pause')">
+                        <span class="mdi mdi-play-pause"></span>
+                    </button>
+                    <button class="btn-circle" onclick="sendControl('next')">
+                        <span class="mdi mdi-skip-next"></span>
+                    </button>
+                </div>
+    
+                <div style="margin-top: 15px; font-size: 11px; color: #555;">
+                    Queue: <span id="queue-count">0/0</span> | Passive: <span id="passive-count">0/0</span>
                 </div>
             </div>
-
-            <div class="controls">
-                <button class="btn-circle" onclick="sendControl('stop')">
-                    <span class="mdi mdi-stop"></span>
-                </button>
-                <button class="btn-circle" id="playPauseBtn" onclick="sendControl('pause')">
-                    <span class="mdi mdi-play-pause"></span>
-                </button>
-                <button class="btn-circle" onclick="sendControl('next')">
-                    <span class="mdi mdi-skip-next"></span>
-                </button>
-            </div>
-
-            <div style="margin-top: 15px; font-size: 11px; color: #555;">
-                Queue: <span id="queue-count">0/0</span> | Passive: <span id="passive-count">0/0</span>
+            <div id="queue-cloud-container" class="queue-clouds">
             </div>
         </div>
     </div>
@@ -232,6 +259,7 @@
             socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    console.debug(data)
                     handleServerData(data);
                 } catch (e) {
                     addLog(responseLog, event.data, "res-tag");
@@ -255,6 +283,19 @@
             const trackTitle = !isStopped && data.metadata?.title ? data.metadata.title : "Немає активного треку";
             document.getElementById('current-track').innerText = trackTitle;
 
+            const cloudContainer = document.getElementById('queue-cloud-container');
+            cloudContainer.innerHTML = ''; // Очищуємо старі хмарки
+        
+            if (!isStopped && data.queue && Array.isArray(data.queue)) {
+                data.queue.forEach((track, index) => {
+                    const span = document.createElement('span');
+                    span.className = 'queue-item';
+                    
+                    span.innerText = track.title || "Unknown Track";
+                    span.title = track.title; // Підказка при наведенні
+                    cloudContainer.appendChild(span);
+                });
+            }
         }
         
         function handleServerData(data) {

@@ -5,10 +5,18 @@ from aiohttp import web
 from config import PORT
 import utils
 
+
 connected_clients = set()
 
 
-async def ws_broadcast(data, _except=None):
+async def ws_broadcast(data, _except=None, _only=None):
+    if _only:
+        try:
+            await _only.send_json(data)
+        except:
+            connected_clients.remove(_only)
+        return
+
     for ws in list(connected_clients):
         if _except and _except is ws:
             continue
@@ -18,20 +26,15 @@ async def ws_broadcast(data, _except=None):
             connected_clients.remove(ws)
 
 
-async def send_data(ws, player, type, additional: dict = {}):
-
-    await ws.send_json(
-        {
-            "type": type,
-            "mode": player.mode,
-            "status": player.PlaybackStatus,
-            "metadata": player.get_meta(),
-            "active_size": len(player.active_queue),
-            "active_index": player.active_index,
-            "passive_size": len(player.passive_queue),
-            "passive_index": player.passive_index,
-        }
-        | additional
+async def send_data(
+    ws, player, type, additional: dict = {}, update_queue: bool = False, _only=False
+):
+    await player.broadcast_state(
+        None,
+        type=type,
+        additional=additional,
+        update_queue=update_queue,
+        _only=ws if _only else None,
     )
 
 
@@ -45,12 +48,14 @@ async def websocket_handler(request):
 
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
+            update = False
             data = json.loads(msg.data)
             cmd = data.get("cmd")
 
             # ACTIVE playback
             if cmd == "play":
                 await player.add_active(data["url"])
+                update = True
 
             elif cmd == "active_playlist":
                 items = await utils.load_youtube_playlist(data["url"])
@@ -61,10 +66,6 @@ async def websocket_handler(request):
                 asyncio.create_task(
                     process_playlist_background(data["url"], player, ws)
                 )
-                # async for item_url in utils.stream_links_async(data["url"]):
-                # await player.add_passive(item_url)
-                # if len(player.passive_queue) % 200 == 0:
-                # await send_data(ws, player, "Loading")
 
             elif cmd == "add":
                 await player.add_passive(data["url"])
@@ -73,20 +74,21 @@ async def websocket_handler(request):
             elif cmd == "control":
                 if data["action"] == "next":
                     await player.async_next(ws_client=ws)
-
                 elif data["action"] == "pause":
                     await player.async_play_pause(ws_client=ws)
 
                 elif data["action"] == "stop":
                     await player.async_stop(ws_client=ws)
+                    update = True
 
-            await send_data(ws, player, "response")
+            await send_data(ws, player, "response", update_queue=update)
     connected_clients.remove(ws)
     return ws
 
 
 async def process_playlist_background(url, player, ws):
     try:
+        update = True
         async for item_url in utils.stream_links_async(url):
             await player.add_passive(item_url)
 
@@ -94,8 +96,9 @@ async def process_playlist_background(url, player, ws):
                 await asyncio.sleep(0)
 
             if len(player.passive_queue) % 200 == 0:
-                await send_data(ws, player, "Loading")
-        await send_data(ws, player, "Loading")
+                await send_data(ws, player, "Loading", update_queue=update)
+                update = False
+        await send_data(ws, player, "Loading", update_queue=update)
     except Exception as e:
         print(f"Помилка завантаження плейлиста: {e}")
 

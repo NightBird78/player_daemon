@@ -1,10 +1,8 @@
-import subprocess
 from gi.repository import GLib
 from pydbus.generic import signal
-from mpv_ipc import MPV
 from base_player import BasePlayer
 from utils import fetch_metadata
-from config import MPRIS_SOCKET, IDENTITY, cleanup_socket
+from config import MPRIS_SOCKET, IDENTITY
 import asyncio
 
 
@@ -32,9 +30,7 @@ class MPRISPlayer(BasePlayer):
     """
 
     def __init__(self):
-        super().__init__()
-        self.mpv = MPV(MPRIS_SOCKET)
-        self.proc = None
+        super().__init__(MPRIS_SOCKET)
         # state
         self.Identity = IDENTITY
         self.CanGoNext = False
@@ -69,10 +65,7 @@ class MPRISPlayer(BasePlayer):
         meta = await fetch_metadata(url)
 
         if not self.proc:
-            cleanup_socket(MPRIS_SOCKET)
-            self.proc = subprocess.Popen(
-                ["mpv", "--no-video", f"--input-ipc-server={MPRIS_SOCKET}", url]
-            )
+            self.init_mpv(url)
         else:
             self.mpv.send({"command": ["loadfile", url, "replace"]})
 
@@ -91,53 +84,52 @@ class MPRISPlayer(BasePlayer):
 
         self.Metadata["xesam:title"] = GLib.Variant("s", "loading")
         self.Metadata["xesam:artist"] = GLib.Variant("as", ["loading"])
-        self.PropertiesChanged(
-            "org.mpris.MediaPlayer2.Player",
-            {
-                "Metadata": self.Metadata,
-                "CanGoNext": False,
-                # "PlayBackStatus": self.PlaybackStatus,
-            },
-            [],
+        self._update_mpris_metadata(
+            additional={"CanGoNext": False},
         )
+
+        res = None
         if self.mode == "active":
+            self.current_mode = "active"
             if self.active_index + 1 < len(self.active_queue):
                 self.active_index += 1
                 await self.play_current()
 
-                (
-                    await self.broadcast_state(
-                        "Next",
-                        ws_client=ws_client,
-                        additional={"current": self.active_queue[self.active_index]},
-                    ),
-                )
+                self.queue_list.pop(0)
 
+                res = {"current": self.active_queue[self.active_index]}
             else:
                 self.active_queue.clear()
                 self.active_index = -1
 
                 if self.passive_queue:
                     self.mode = "passive"
+                    self.current_mode = "passive"
                     await self.async_next(ws_client=ws_client)
                 else:
                     await self.async_stop(ws_client=ws_client)
 
         else:
+            self.current_mode = "passive"
             if self.passive_index + 1 < len(self.passive_queue):
                 self.passive_index += 1
                 await self.play_current()
 
-                (
-                    await self.broadcast_state(
-                        "Next",
-                        ws_client=ws_client,
-                        additional={"current": self.passive_queue[self.passive_index]},
-                    ),
-                )
+                self.queue_list.pop(0)
+
+                res = {"current": self.passive_queue[self.passive_index]}
 
             else:
                 await self.async_stop(broadcast=False)
+
+        (
+            await self.broadcast_state(
+                "Next",
+                ws_client=ws_client,
+                additional=res,
+                update_queue=True,
+            ),
+        )
 
     # =========================
     # Controls
@@ -174,17 +166,9 @@ class MPRISPlayer(BasePlayer):
 
         self.Metadata["xesam:title"] = GLib.Variant("s", "wait for")
         self.Metadata["xesam:artist"] = GLib.Variant("as", ["queue"])
-
-        self.PropertiesChanged(
-            "org.mpris.MediaPlayer2.Player",
-            {
-                "PlaybackStatus": self.PlaybackStatus,
-                "CanGoNext": False,
-                "Metadata": self.Metadata,
-            },
-            [],
+        self._update_mpris_metadata(
+            additional={"CanGoNext": False},
         )
-
         self.active_queue.clear()
         self.passive_queue.clear()
 
@@ -192,7 +176,7 @@ class MPRISPlayer(BasePlayer):
         self.passive_index = -1
 
         await self.broadcast_state(
-            "PlayPause", ws_client=ws_client, broadcast=broadcast
+            "PlayPause", ws_client=ws_client, broadcast=broadcast, update_queue=True
         )
 
     def Raise(self):

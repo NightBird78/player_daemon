@@ -1,8 +1,8 @@
-import subprocess
 import json
 from mutagen.easyid3 import EasyID3
 import asyncio
 import os
+import time
 
 
 async def stream_links_async(url):
@@ -39,6 +39,9 @@ async def stream_links_async(url):
     await process.wait()
 
 
+cache = {}
+
+
 async def fetch_metadata(url):
     """Повертає метадані асинхронно"""
     if url.endswith(".mp3"):
@@ -51,6 +54,15 @@ async def fetch_metadata(url):
         except:
             return {"title": "Unknown File", "artist": ["Unknown"]}
     else:
+        now = int(time.time())
+
+        if url in cache:
+            expired_keys = [k for k, v in cache.items() if now - v["time"] > 3600]
+            for k in expired_keys:
+                del cache[k]
+
+            if url in cache:
+                return cache[url]
         process = await asyncio.create_subprocess_exec(
             "yt-dlp",
             "-J",
@@ -60,4 +72,9 @@ async def fetch_metadata(url):
         )
         stdout, _ = await process.communicate()
         data = json.loads(stdout.decode())
-        return {"title": data.get("title"), "artist": [data.get("uploader", "Unknown")]}
+        cache[url] = {
+            "title": data.get("title"),
+            "artist": [data.get("uploader", "Unknown")],
+            "time": int(time.time()),
+        }
+        return cache[url]
