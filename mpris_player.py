@@ -134,13 +134,11 @@ class MPRISPlayer(BasePlayer):
             else:
                 await self.async_stop(broadcast=False)
 
-        (
-            await self.broadcast_state(
-                "Next",
-                ws_client=ws_client,
-                additional=res,
-                update_queue=True,
-            ),
+        await self.broadcast_state(
+            "Next",
+            ws_client=ws_client,
+            additional=res,
+            update_queue=True,
         )
 
     # =========================

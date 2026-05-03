@@ -40,13 +40,14 @@ class SMTCPlayer(BasePlayer):
     def get_meta(self):
         return {
             "title": self.Metadata.get("title", "Unknown"),
-            "artist": self.Metadata.get("artist", ["Unknown"])[0],
+            "artist": self.Metadata.get("artist", ["Unknown"]),
         }
 
     def update_smtc(self):
         updater = self.smtc.display_updater
-        updater.music_properties.title = self.Metadata.get("title", "Unknown")
-        updater.music_properties.artist = self.Metadata.get("artist", ["Unknown"])[0]
+        meta = self.get_meta()
+        updater.music_properties.title = meta["title"]
+        updater.music_properties.artist = meta["artist"]
         updater.update()
 
         status_map = {
@@ -87,31 +88,45 @@ class SMTCPlayer(BasePlayer):
             "PlayPause", ws_client=ws_client, broadcast=broadcast
         )
 
-    async def async_next(self, *, ws_client=None):
+    async def async_next(self, *, ws_client=None, count=1):
+        local_count = max(1, count)
         if self.PlaybackStatus == "Playing":
             await self.async_play_pause(broadcast=False)
 
-        res = None
+        res = {}
         if self.mode == "active":
-            if self.active_index + 1 < len(self.active_queue):
-                self.active_index += 1
+            if self.active_index + local_count < len(self.active_queue):
+                self.active_index += local_count
                 await self.play_current()
+
+                try:
+                    self.queue_list.pop(0)
+                except:
+                    pass
+
                 res = {"current": self.active_queue[self.active_index]}
             else:
+                local_count = (self.active_index + local_count) - len(self.active_queue)
                 self.active_queue.clear()
                 self.active_index = -1
                 if self.passive_queue:
                     self.mode = "passive"
-                    return await self.async_next(ws_client=ws_client)
+                    await self.async_next(ws_client=ws_client, count=local_count + 1)
                 else:
-                    return await self.async_stop(ws_client)
+                    await self.async_stop(ws_client)
         else:
-            if self.passive_index + 1 < len(self.passive_queue):
-                self.passive_index += 1
+            if self.passive_index + local_count < len(self.passive_queue):
+                self.passive_index += local_count
                 await self.play_current()
+
+                try:
+                    self.queue_list.pop(0)
+                except:
+                    pass
+
                 res = {"current": self.passive_queue[self.passive_index]}
             else:
-                return await self.async_stop(ws_client)
+                await self.async_stop(ws_client)
 
         self.update_smtc()
         await self.broadcast_state(
@@ -121,6 +136,17 @@ class SMTCPlayer(BasePlayer):
     async def async_stop(self, ws_client=None):
         self.mpv.send({"command": ["quit"]})
         self.proc = None
+
         self.PlaybackStatus = "Stopped"
+
+        self.active_queue.clear()
+        self.passive_queue.clear()
+
+        self.active_index = -1
+        self.passive_index = -1
+
+        self.Metadata["title"] = "wait for"
+        self.Metadata["artist"] = ["queue"]
+
         self.update_smtc()
         await self.broadcast_state("Stop", ws_client=ws_client, update_queue=True)

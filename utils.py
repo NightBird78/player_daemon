@@ -63,7 +63,7 @@ async def fetch_metadata(url):
 
             if url in cache:
                 u = cache[url]
-                return {"title": u["title"], "artist": [u["artist"]]}
+                return {"title": u["title"], "artist": u["artist"]}
         process = await asyncio.create_subprocess_exec(
             "yt-dlp",
             "-J",
@@ -81,4 +81,4 @@ async def fetch_metadata(url):
             "time": int(time.time()),
         }
         u = cache[url]
-        return {"title": u["title"], "artist": [u["artist"]]}
+        return {"title": u["title"], "artist": u["artist"]}

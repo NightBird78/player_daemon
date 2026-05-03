@@ -45,26 +45,20 @@ from aiohttp import web
 import server
 
 
-@pytest.fixture
-def windows_player(mocker):
-    mock_popen = MagicMock()
-    mock_popen.pid = 1234
+@pytest.fixture(params=["linux", "windows"], ids=["OS: Linux", "OS: Windows"])
+def player(request, mocker):
+    mock_popen = MagicMock(pid=1234)
     mocker.patch("base_player.subprocess.Popen", return_value=mock_popen)
     mocker.patch("base_player.cleanup_socket")
+    match request.param:
+        case "linux":
+            p = MPRISPlayer()
+        case "windows":
+            p = SMTCPlayer(None)
 
-    p = SMTCPlayer(None)
-    p.mpv = MagicMock()
-    return p
+        case _:
+            raise OSError(f"can not test {request.param}")
 
-
-@pytest.fixture
-def linux_player(mocker):
-    mock_popen = MagicMock()
-    mock_popen.pid = 1234
-    mocker.patch("base_player.subprocess.Popen", return_value=mock_popen)
-    mocker.patch("base_player.cleanup_socket")
-
-    p = MPRISPlayer()
     p.mpv = MagicMock()
     return p
 
@@ -75,7 +69,8 @@ def mock_fetch():
         yield m
 
 
-async def _test_play_current_success(player, mock_fetch):
+@pytest.mark.asyncio
+async def test_play_current_success(player, mock_fetch):
     mock_fetch.return_value = {"title": "Test Song", "artist": ["Test Artist"]}
     player.active_queue = ["http://fakeurl.com"]
     player.active_index = 0
@@ -88,7 +83,8 @@ async def _test_play_current_success(player, mock_fetch):
     player.mpv.send.assert_called()
 
 
-async def _test_websocket_actual_connection(player, aiohttp_client):
+@pytest.mark.asyncio
+async def test_websocket_actual_connection(player, aiohttp_client):
     app = web.Application()
     app["player"] = player
     app.router.add_get("/ws", server.websocket_handler)
@@ -103,7 +99,8 @@ async def _test_websocket_actual_connection(player, aiohttp_client):
         await ws.close()
 
 
-async def _test_add_active_and_play(player, mock_fetch, aiohttp_client):
+@pytest.mark.asyncio
+async def test_add_active_and_play(player, mock_fetch, aiohttp_client):
     mock_fetch.return_value = {"title": "Test Song", "artist": ["Test Artist"]}
     app = web.Application()
     app["player"] = player
@@ -135,7 +132,8 @@ async def _test_add_active_and_play(player, mock_fetch, aiohttp_client):
         await ws.close()
 
 
-async def _test_async_next_fallback_to_passive(player, mock_fetch):
+@pytest.mark.asyncio
+async def test_async_next_fallback_to_passive(player, mock_fetch):
     mock_fetch.return_value = {"title": "Next Song", "artist": ["Artist"]}
 
     player.active_queue = ["url1"]
@@ -152,43 +150,41 @@ async def _test_async_next_fallback_to_passive(player, mock_fetch):
     assert player.current_mode == "passive"
 
 
-# ===== LINUX =====
 @pytest.mark.asyncio
-async def test_linux_play_current_success(linux_player, mock_fetch):
-    await _test_play_current_success(linux_player, mock_fetch)
+async def test_async_next_with_step(player, mock_fetch):
+    mock_fetch.return_value = {"title": "Next Song", "artist": ["Artist"]}
 
+    player.passive_queue = ["url1", "url2", "url3", "url4", "url5", "url6"]
+    player.passive_index = 1
 
-@pytest.mark.asyncio
-async def test_linux_websocket_actual_connection(linux_player, aiohttp_client):
-    await _test_websocket_actual_connection(linux_player, aiohttp_client)
+    await player.async_next(count=2)
 
-
-@pytest.mark.asyncio
-async def test_linux_add_active_and_play(linux_player, mock_fetch, aiohttp_client):
-    await _test_add_active_and_play(linux_player, mock_fetch, aiohttp_client)
-
-
-@pytest.mark.asyncio
-async def test_linux_async_next_fallback_to_passive(linux_player, mock_fetch):
-    await _test_async_next_fallback_to_passive(linux_player, mock_fetch)
-
-
-# ==== WINDOWS ====
-@pytest.mark.asyncio
-async def test_windows_play_current_success(windows_player, mock_fetch):
-    await _test_play_current_success(windows_player, mock_fetch)
+    assert player.mode == "passive"
+    assert player.active_index == -1
+    assert player.passive_index == 3
+    assert player.current_mode == "passive"
 
 
 @pytest.mark.asyncio
-async def test_windows_websocket_actual_connection(windows_player, aiohttp_client):
-    await _test_websocket_actual_connection(windows_player, aiohttp_client)
+async def test_async_stop(player, mock_fetch):
 
+    player.active_queue = ["url1", "url2"]
+    player.active_index = 1
+    player.passive_queue = ["url1", "url2", "url3", "url4", "url5", "url6"]
+    player.passive_index = 3
 
-@pytest.mark.asyncio
-async def test_windows_add_active_and_play(windows_player, mock_fetch, aiohttp_client):
-    await _test_add_active_and_play(windows_player, mock_fetch, aiohttp_client)
+    player.mode = "active"
+    player.current_mode = "passive"
 
+    player.PlaybackStatus = "Paused"
 
-@pytest.mark.asyncio
-async def test_windows_async_next_fallback_to_passive(windows_player, mock_fetch):
-    await _test_async_next_fallback_to_passive(windows_player, mock_fetch)
+    await player.async_stop()
+
+    assert player.PlaybackStatus == "Stopped"
+
+    assert player.active_queue == []
+    assert player.active_index == -1
+    assert player.passive_queue == []
+    assert player.passive_index == -1
+
+    assert player.get_meta() == {"title": "wait for", "artist": ["queue"]}
