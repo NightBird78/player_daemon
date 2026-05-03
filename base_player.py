@@ -95,12 +95,22 @@ class BasePlayer:
                     queue_list_temp.extend(
                         islice(self.passive_queue, self.passive_index + 1, None)
                     )
-
+            errors = False
             for q in queue_list_temp:
-                self.queue_list.append({"url": q} | await utils.fetch_metadata(q))
-
+                meta = await utils.fetch_metadata(q)
+                if meta is None:
+                    errors = True
+                    if q in self.active_queue:
+                        self.active_queue.remove(q)
+                    if q in self.passive_queue:
+                        self.passive_queue.remove(q)
+                    print(f"WARN: Found error-link {q}")
+                    continue
+                self.queue_list.append({"url": q} | meta)
             if len(self.queue_list) > 0:
                 await self.broadcast_state("queue", type="update")
+            if errors:
+                asyncio.create_task(self._update_queue())
 
     def init_mpv(self, url):
         cleanup_socket(self.socket)

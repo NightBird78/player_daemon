@@ -63,6 +63,9 @@ class MPRISPlayer(BasePlayer):
             else self.passive_queue[self.passive_index]
         )
         meta = await fetch_metadata(url)
+        if meta is None:
+            asyncio.create_task(self.async_next())
+            return
 
         if not self.proc:
             self.init_mpv(url)
@@ -78,7 +81,8 @@ class MPRISPlayer(BasePlayer):
     def Next(self):
         asyncio.create_task(self.async_next())
 
-    async def async_next(self, *, ws_client=None):
+    async def async_next(self, *, ws_client=None, count=1):
+        local_count = max(1, count)
         if self.PlaybackStatus == "Playing":
             await self.async_play_pause(broadcast=False)
 
@@ -92,31 +96,38 @@ class MPRISPlayer(BasePlayer):
         res = {}
         if self.mode == "active":
             self.current_mode = "active"
-            if self.active_index + 1 < len(self.active_queue):
-                self.active_index += 1
+            if self.active_index + local_count < len(self.active_queue):
+                self.active_index += local_count
                 await self.play_current()
 
-                self.queue_list.pop(0)
+                try:
+                    self.queue_list.pop(0)
+                except:
+                    pass
 
                 res = {"current": self.active_queue[self.active_index]}
             else:
+                local_count = (self.active_index + local_count) - len(self.active_queue)
                 self.active_queue.clear()
                 self.active_index = -1
 
                 if self.passive_queue:
                     self.mode = "passive"
                     self.current_mode = "passive"
-                    await self.async_next(ws_client=ws_client)
+                    await self.async_next(ws_client=ws_client, count=local_count + 1)
                 else:
                     await self.async_stop(ws_client=ws_client)
 
         else:
             self.current_mode = "passive"
-            if self.passive_index + 1 < len(self.passive_queue):
-                self.passive_index += 1
+            if self.passive_index + local_count < len(self.passive_queue):
+                self.passive_index += local_count
                 await self.play_current()
 
-                self.queue_list.pop(0)
+                try:
+                    self.queue_list.pop(0)
+                except:
+                    pass
 
                 res = {"current": self.passive_queue[self.passive_index]}
 

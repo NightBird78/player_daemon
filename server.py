@@ -38,17 +38,22 @@ async def send_data(
     )
 
 
+buckets = {}
+DEBOUNCE_TIME = 0.5
+
+
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     connected_clients.add(ws)
 
     player = request.app["player"]
-    await send_data(ws, player, "action", {"action": "init"})
+    await send_data(ws, player, "action", {"action": "init"}, _only=True)
 
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
             update = False
+            addi = {}
             data = json.loads(msg.data)
             cmd = data.get("cmd")
 
@@ -73,7 +78,15 @@ async def websocket_handler(request):
             # controls
             elif cmd == "control":
                 if data["action"] == "next":
-                    await player.async_next(ws_client=ws)
+                    if cmd in buckets:
+                        buckets[cmd]["task"].cancel()
+                        buckets[cmd]["count"] += 1
+                        buckets[cmd]["data"] = data
+                    else:
+                        buckets[cmd] = {"count": 1, "data": data, "task": None}
+                    buckets[cmd]["task"] = asyncio.create_task(
+                        delayed_execution(cmd, player, ws)
+                    )
                 elif data["action"] == "pause":
                     await player.async_play_pause(ws_client=ws)
 
@@ -85,11 +98,29 @@ async def websocket_handler(request):
                 ws,
                 player,
                 "response",
-                additional={"action": data["action"]} if cmd == "control" else {},
+                additional={"action": data["action"]} if cmd == "control" else addi,
                 update_queue=update,
+                _only=True,
             )
     connected_clients.remove(ws)
     return ws
+
+
+async def delayed_execution(cmd, player, ws):
+    try:
+        await asyncio.sleep(DEBOUNCE_TIME)
+        bucket = buckets.get(cmd)
+        if bucket:
+            await process_command(cmd, player, ws, bucket["data"], bucket["count"])
+    except asyncio.CancelledError:
+        pass
+
+
+async def process_command(cmd, player, ws, data, count):
+    """Функція, яка реально виконує логіку після затримки"""
+    # Тут твоя логіка обробки
+    await player.async_next(ws_client=ws, count=count)
+    buckets.pop(cmd, None)
 
 
 async def process_playlist_background(url, player, ws):

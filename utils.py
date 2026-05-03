@@ -72,6 +72,8 @@ async def fetch_metadata(url):
         )
         stdout, _ = await process.communicate()
         data = json.loads(stdout.decode())
+        if data is None:
+            return None
         cache[url] = {
             "title": data.get("title"),
             "artist": [data.get("uploader", "Unknown")],

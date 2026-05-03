@@ -320,6 +320,9 @@
             
             if (!isStopped) {
                 currentState = data.mode
+                stopBtn.disabled = false;
+                pauseBtn.disabled = false;
+                nextBtn.disabled = false;
             }
         
             playerCard.classList.remove('active', 'passive', 'stopped');
@@ -368,11 +371,7 @@
                     stopBtn.disabled = true
                     pauseBtn.disabled = true
                     nextBtn.disabled = true
-                } else {
-                    stopBtn.disabled = false;
-                    pauseBtn.disabled = false;
-                    nextBtn.disabled = false;
-                }
+                } 
             } else if (data.type === "response") {
                 addLog(responseLog, `Status: ${data.status} | Mode: ${data.mode}`, "res-tag");
                 if (data.action === "next" || data.action === "stop") {
@@ -382,12 +381,6 @@
                     stopBtn.disabled = true
                     pauseBtn.disabled = true
                     nextBtn.disabled = true
-                }
-
-                if (data.status !== "Stopped") {
-                    stopBtn.disabled = false;
-                    pauseBtn.disabled = false;
-                    nextBtn.disabled = false;
                 }
             } else if (data.type === "process") {
         
