@@ -85,10 +85,11 @@ class MPRISPlayer(BasePlayer):
         self.Metadata["xesam:title"] = GLib.Variant("s", "loading")
         self.Metadata["xesam:artist"] = GLib.Variant("as", ["loading"])
         self._update_mpris_metadata(
+            self.get_meta(),
             additional={"CanGoNext": False},
         )
 
-        res = None
+        res = {}
         if self.mode == "active":
             self.current_mode = "active"
             if self.active_index + 1 < len(self.active_queue):
@@ -167,6 +168,7 @@ class MPRISPlayer(BasePlayer):
         self.Metadata["xesam:title"] = GLib.Variant("s", "wait for")
         self.Metadata["xesam:artist"] = GLib.Variant("as", ["queue"])
         self._update_mpris_metadata(
+            self.get_meta(),
             additional={"CanGoNext": False},
         )
         self.active_queue.clear()

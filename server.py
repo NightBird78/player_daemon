@@ -81,7 +81,13 @@ async def websocket_handler(request):
                     await player.async_stop(ws_client=ws)
                     update = True
 
-            await send_data(ws, player, "response", update_queue=update)
+            await send_data(
+                ws,
+                player,
+                "response",
+                additional={"action": data["action"]} if cmd == "control" else {},
+                update_queue=update,
+            )
     connected_clients.remove(ws)
     return ws
 

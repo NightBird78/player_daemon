@@ -7,6 +7,8 @@ import utils
 from itertools import islice
 import asyncio
 
+lock = asyncio.Lock()
+
 
 class BasePlayer:
     def __init__(self, socket):
@@ -42,7 +44,7 @@ class BasePlayer:
                     "type": type,
                     "action": action_name,
                     "status": self.PlaybackStatus,
-                    "mode": self.mode,
+                    "mode": self.current_mode,
                     "active_size": len(self.active_queue),
                     "active_index": self.active_index,
                     "passive_size": len(self.passive_queue),
@@ -58,40 +60,47 @@ class BasePlayer:
                 asyncio.create_task(self._update_queue())
 
     async def _update_queue(self):
-        self.queue_list.clear()
-        queue_list_temp = []
-        if len(self.active_queue) > 0:
-            if self.active_index + NEXT_QUEUE_LEN + 1 < len(self.active_queue) - 1:
-                queue_list_temp.extend(
-                    islice(
-                        self.active_queue,
-                        self.active_index + 1,
-                        self.active_index + 1 + NEXT_QUEUE_LEN,
+        async with lock:
+            self.queue_list.clear()
+            queue_list_temp = []
+            if len(self.active_queue) > 0:
+                if self.active_index + NEXT_QUEUE_LEN + 1 < len(self.active_queue) - 1:
+                    queue_list_temp.extend(
+                        islice(
+                            self.active_queue,
+                            self.active_index + 1,
+                            self.active_index + 1 + NEXT_QUEUE_LEN,
+                        )
                     )
-                )
-            else:
-                queue_list_temp.extend(
-                    islice(self.active_queue, self.active_index + 1, None)
-                )
-        if len(queue_list_temp) < NEXT_QUEUE_LEN and len(self.passive_queue) > 0:
-            if self.passive_index + NEXT_QUEUE_LEN + 1 < len(self.passive_queue) - 1:
-                queue_list_temp.extend(
-                    islice(
-                        self.passive_queue,
-                        self.passive_index + 1,
-                        self.passive_index + 1 + NEXT_QUEUE_LEN - len(queue_list_temp),
+                else:
+                    queue_list_temp.extend(
+                        islice(self.active_queue, self.active_index + 1, None)
                     )
-                )
-            else:
-                queue_list_temp.extend(
-                    islice(self.passive_queue, self.passive_index + 1, None)
-                )
+            if len(queue_list_temp) < NEXT_QUEUE_LEN and len(self.passive_queue) > 0:
+                if (
+                    self.passive_index + NEXT_QUEUE_LEN + 1
+                    < len(self.passive_queue) - 1
+                ):
+                    queue_list_temp.extend(
+                        islice(
+                            self.passive_queue,
+                            self.passive_index + 1,
+                            self.passive_index
+                            + 1
+                            + NEXT_QUEUE_LEN
+                            - len(queue_list_temp),
+                        )
+                    )
+                else:
+                    queue_list_temp.extend(
+                        islice(self.passive_queue, self.passive_index + 1, None)
+                    )
 
-        for q in queue_list_temp:
-            self.queue_list.append({"url": q} | await utils.fetch_metadata(q))
+            for q in queue_list_temp:
+                self.queue_list.append({"url": q} | await utils.fetch_metadata(q))
 
-        if len(self.queue_list) > 0:
-            await self.broadcast_state("queue", type="update")
+            if len(self.queue_list) > 0:
+                await self.broadcast_state("queue", type="update")
 
     def init_mpv(self, url):
         cleanup_socket(self.socket)
@@ -119,6 +128,7 @@ class BasePlayer:
         # self.active_index = len(self.active_queue) - 1
         if self.passive_index == -1 and self.active_index == -1:
             self.active_index = 0
+            self.current_mode = "active"
             await self.play_current()
 
     async def set_active_queue(self, items):

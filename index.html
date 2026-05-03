@@ -24,6 +24,7 @@
             height: 100vh;
             padding: 20px;
             box-sizing: border-box;
+            cursor: default;
         }
 
         .header-panel {
@@ -48,16 +49,22 @@
 
         button {
             padding: 10px 25px;
-            background: var(--accent);
+            background: #222;
+            color: #555;
             border: none;
             border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
-            transition: 0.3s;
+            transition: 1s;
         }
 
-        button:hover:not(:disabled) { background: #018786; transform: translateY(-2px); }
-        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        button:hover:not(:disabled) { transform: scale(1.05); }
+        button:disabled { cursor: default; background: #222 }
+
+        .send-btn {
+            background: var(--accent);
+            color: var(--bg-color);
+        }
 
         .main-grid {
             display: grid;
@@ -114,6 +121,14 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             height: fit-content;
         }
+
+        .player-card.active .placeholder-fill { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+        .player-card.passive .placeholder-fill { background: var(--action-color); box-shadow: none; }
+        .player-card.stopped .placeholder-fill { background: #333; }
+        
+        .player-card.active .btn-circle { background: var(--accent); }
+        .player-card.passive .btn-circle { background: var(--action-color); }
+        .player-card.stopped .btn-circle { background: #222; } 
 
         .queue-clouds {
             display: flex;
@@ -176,6 +191,7 @@
             align-items: center;
             justify-content: center;
             font-size: 18px;
+            color: #555;
         }
         .btn-circle .mdi {
             font-size: 24px; /* Розмір іконки */
@@ -194,7 +210,7 @@
             <option value="playlist">Playlist</option>
         </select>
         <input type="text" id="messageInput" placeholder="URL або назва треку...">
-        <button id="sendBtn" onclick="sendInputMessage()">Додати</button>
+        <button id="sendBtn" class="send-btn" onclick="sendInputMessage()">Додати</button>
     </div>
 
     <div class="main-grid">
@@ -221,13 +237,13 @@
                 </div>
     
                 <div class="controls">
-                    <button class="btn-circle" onclick="sendControl('stop')">
+                    <button id="stop-btn" class="btn-circle stopped" onclick="sendControl('stop')">
                         <span class="mdi mdi-stop"></span>
                     </button>
-                    <button class="btn-circle" id="playPauseBtn" onclick="sendControl('pause')">
+                    <button id="pause-btn" class="btn-circle stopped" id="playPauseBtn" onclick="sendControl('pause')">
                         <span class="mdi mdi-play-pause"></span>
                     </button>
-                    <button class="btn-circle" onclick="sendControl('next')">
+                    <button id="next-btn" class="btn-circle stopped" onclick="sendControl('next')">
                         <span class="mdi mdi-skip-next"></span>
                     </button>
                 </div>
@@ -246,6 +262,17 @@
         const responseLog = document.getElementById('response-log');
         const input = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
+        const progressBar = document.getElementById('progressBarFill');
+
+        const stopBtn = document.getElementById('stop-btn')
+        const pauseBtn = document.getElementById('pause-btn')
+        const nextBtn = document.getElementById('next-btn')
+
+        stopBtn.disabled = true
+        pauseBtn.disabled = true
+        nextBtn.disabled = true
+        
+        sendBtn.disabled = true
         let socket;
 
         function connect() {
@@ -254,6 +281,10 @@
             socket.onopen = () => {
                 addLog(responseLog, "З'єднання встановлено", "res-tag");
                 sendBtn.disabled = false;
+
+                stopBtn.disabled = false;
+                pauseBtn.disabled = false;
+                nextBtn.disabled = false;
             };
 
             socket.onmessage = (event) => {
@@ -269,12 +300,30 @@
             socket.onclose = () => {
                 addLog(responseLog, "З'єднання розірвано. Перепідключення...", "res-tag");
                 sendBtn.disabled = true;
+
+                stopBtn.disabled = true
+                pauseBtn.disabled = true
+                nextBtn.disabled = true
+
+                progressBar.style.width = "0%";
+                updatePlayerUI({"Status": "Stopped"})
                 setTimeout(connect, 3000);
             };
         }
 
         function updatePlayerUI(data) {
             const isStopped = data.status === "Stopped";
+
+            const playerCard = document.querySelector('.player-card');
+            
+            let currentState = 'stopped';
+            
+            if (!isStopped) {
+                currentState = data.mode
+            }
+        
+            playerCard.classList.remove('active', 'passive', 'stopped');
+            playerCard.classList.add(currentState);
 
             document.getElementById('queue-count').innerText = isStopped ? '0/0' : `${(data.active_size || 0) > 0 ? data.active_index + 1 : 0}/${data.active_size || 0}`;
             document.getElementById('passive-count').innerText = isStopped ? '0/0' : `${(data.passive_size || 0) > 0 ? data.passive_index + 1 : 0}/${data.passive_size || 0}`;
@@ -291,8 +340,17 @@
                     const span = document.createElement('span');
                     span.className = 'queue-item';
                     
-                    span.innerText = track.title || "Unknown Track";
-                    span.title = track.title; // Підказка при наведенні
+                    const titleDiv = document.createElement('div');
+                    titleDiv.className = 'track-title';
+                    titleDiv.innerText = track.title || "Unknown Track";
+                    
+                    const artistDiv = document.createElement('div');
+                    artistDiv.className = 'track-artist';
+                    artistDiv.innerText = track.artist || "Unknown Artist";
+                    
+                    span.appendChild(titleDiv);
+                    span.appendChild(artistDiv);
+                    
                     cloudContainer.appendChild(span);
                 });
             }
@@ -301,17 +359,37 @@
         function handleServerData(data) {
             if (data.type === "action") {
                 addLog(actionLog, `${data.action} -> ${data.status || 'N/A'}`, "act-tag");
-                if (data.action === "Next" || data.action === "Stop/End") {
-                    const progressBar = document.getElementById('progressBarFill');
+                if (data.action === "Next" || data.action === "Stop/End" || data.action === "init") {
 
-                    if (progressBar) {
-                        progressBar.style.width = "0%";
-                    }
+                    progressBar.style.width = "0%";
+
+                }
+                if (data.status === "Stopped" || data.action === "Stop/End") {
+                    stopBtn.disabled = true
+                    pauseBtn.disabled = true
+                    nextBtn.disabled = true
+                } else {
+                    stopBtn.disabled = false;
+                    pauseBtn.disabled = false;
+                    nextBtn.disabled = false;
                 }
             } else if (data.type === "response") {
                 addLog(responseLog, `Status: ${data.status} | Mode: ${data.mode}`, "res-tag");
+                if (data.action === "next" || data.action === "stop") {
+                    progressBar.style.width = "0%";
+                }
+                if (data.status === "Stopped") {
+                    stopBtn.disabled = true
+                    pauseBtn.disabled = true
+                    nextBtn.disabled = true
+                }
+
+                if (data.status !== "Stopped") {
+                    stopBtn.disabled = false;
+                    pauseBtn.disabled = false;
+                    nextBtn.disabled = false;
+                }
             } else if (data.type === "process") {
-                const progressBar = document.getElementById('progressBarFill');
         
                 if (progressBar && data.percent !== undefined) {
                     const width = Math.min(Math.max(data.percent, 0), 100);
