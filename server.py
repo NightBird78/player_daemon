@@ -93,7 +93,6 @@ async def websocket_handler(request):
                 elif data["action"] == "stop":
                     await player.async_stop(ws_client=ws)
                     update = True
-
             await send_data(
                 ws,
                 player,

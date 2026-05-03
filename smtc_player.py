@@ -1,7 +1,7 @@
 import asyncio
 from config import SMTC_SOCKET
 from base_player import BasePlayer
-from utils import fetch_metadata
+import utils
 from winsdk.windows.media import MediaPlaybackType
 
 from winsdk.windows.media.playback import MediaPlayer
@@ -37,6 +37,12 @@ class SMTCPlayer(BasePlayer):
         elif args.button == SystemMediaTransportControlsButton.NEXT:
             asyncio.run_coroutine_threadsafe(self.async_next(), self.loop)
 
+    def get_meta(self):
+        return {
+            "title": self.Metadata.get("title", "Unknown"),
+            "artist": self.Metadata.get("artist", ["Unknown"])[0],
+        }
+
     def update_smtc(self):
         updater = self.smtc.display_updater
         updater.music_properties.title = self.Metadata.get("title", "Unknown")
@@ -57,11 +63,11 @@ class SMTCPlayer(BasePlayer):
         if not url:
             return
 
-        self.Metadata = await fetch_metadata(url)
+        self.Metadata = await utils.fetch_metadata(url)
 
         if not self.proc:
             self.init_mpv(url)
-
+            # todo investigate
             self.mpv.send({"command": ["client_name"]})
             self.mpv.send({"command": ["cycle", "pause"]})
         else:

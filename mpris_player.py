@@ -1,7 +1,7 @@
 from gi.repository import GLib
 from pydbus.generic import signal
 from base_player import BasePlayer
-from utils import fetch_metadata
+import utils
 from config import MPRIS_SOCKET, IDENTITY
 import asyncio
 
@@ -62,7 +62,7 @@ class MPRISPlayer(BasePlayer):
             if self.mode == "active"
             else self.passive_queue[self.passive_index]
         )
-        meta = await fetch_metadata(url)
+        meta = await utils.fetch_metadata(url)
         if meta is None:
             asyncio.create_task(self.async_next())
             return
