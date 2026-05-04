@@ -2,19 +2,20 @@ from collections import deque
 from server import ws_broadcast
 from mpv_ipc import MPV
 from config import cleanup_socket, NEXT_QUEUE_LEN
+from abc import ABC, abstractmethod
 import subprocess
 import utils
 from itertools import islice
 import asyncio
 
-lock = asyncio.Lock()
 
-
-class BasePlayer:
+class BasePlayer(ABC):
     def __init__(self, socket):
         self.mpv = MPV(socket)
         self.socket = socket
         self.proc = None
+
+        self.lock = asyncio.Lock()
 
         self.active_queue = deque()
         self.passive_queue = deque()
@@ -60,41 +61,25 @@ class BasePlayer:
                 asyncio.create_task(self._update_queue())
 
     async def _update_queue(self):
-        async with lock:
+        async with self.lock:
             self.queue_list.clear()
             queue_list_temp = []
-            if len(self.active_queue) > 0:
-                if self.active_index + NEXT_QUEUE_LEN + 1 < len(self.active_queue) - 1:
-                    queue_list_temp.extend(
-                        islice(
-                            self.active_queue,
-                            self.active_index + 1,
-                            self.active_index + 1 + NEXT_QUEUE_LEN,
-                        )
+
+            start_active = self.active_index + 1
+            queue_list_temp = list(
+                islice(self.active_queue, start_active, start_active + NEXT_QUEUE_LEN)
+            )
+
+            remaining_slots = NEXT_QUEUE_LEN - len(queue_list_temp)
+            if remaining_slots > 0:
+                start_passive = self.passive_index + 1
+                queue_list_temp.extend(
+                    islice(
+                        self.passive_queue,
+                        start_passive,
+                        start_passive + remaining_slots,
                     )
-                else:
-                    queue_list_temp.extend(
-                        islice(self.active_queue, self.active_index + 1, None)
-                    )
-            if len(queue_list_temp) < NEXT_QUEUE_LEN and len(self.passive_queue) > 0:
-                if (
-                    self.passive_index + NEXT_QUEUE_LEN + 1
-                    < len(self.passive_queue) - 1
-                ):
-                    queue_list_temp.extend(
-                        islice(
-                            self.passive_queue,
-                            self.passive_index + 1,
-                            self.passive_index
-                            + 1
-                            + NEXT_QUEUE_LEN
-                            - len(queue_list_temp),
-                        )
-                    )
-                else:
-                    queue_list_temp.extend(
-                        islice(self.passive_queue, self.passive_index + 1, None)
-                    )
+                )
             errors = False
             for q in queue_list_temp:
                 meta = await utils.fetch_metadata(q)
@@ -165,3 +150,23 @@ class BasePlayer:
         if self.mode == "passive":
             self.passive_index = 0
             await self.play_current()
+
+    @abstractmethod
+    def get_meta(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def play_current(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def async_next(self, *, ws_client=None, count=1):
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def async_play_pause(self, *, ws_client=None, broadcast: bool = True):
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def async_stop(self, *, ws_client=None, broadcast=True):
+        raise NotImplementedError()

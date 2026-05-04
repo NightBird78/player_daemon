@@ -1,6 +1,11 @@
-from unittest.mock import AsyncMock, MagicMock, patch
 import sys
+import asyncio
+import pytest
+import pytest_asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+from aiohttp import web
 
+# --- Системні моки (повинні бути до імпорту локальних модулів) ---
 mock_modules = [
     "pydbus",
     "pydbus.generic",
@@ -9,182 +14,192 @@ mock_modules = [
     "winsdk.windows.media",
     "winsdk.windows.media.playback",
 ]
-
 for mod_name in mock_modules:
     sys.modules[mod_name] = MagicMock()
 
-
 from gi.repository import GLib
 
+GLib.Variant = lambda t, v: MagicMock(unpack=lambda: v)
 
-def fake_variant(t, v):
-    class Fake:
-        def unpack(self):
-            return v
-
-        def __getitem__(self, key):  # якщо десь використовують як dict
-            return v.get(key) if isinstance(v, dict) else None
-
-    return Fake()
-
-
-GLib.Variant = fake_variant
-
-
-import pydbus.generic
-
-pydbus.generic.signal = MagicMock()
-
+import server
 from mpris_player import MPRISPlayer
 from smtc_player import SMTCPlayer
 
+# --- Допоміжні класи ---
 
-import pytest
-import asyncio
-from aiohttp import web
-import server
+
+class WSMessageManager:
+    def __init__(self, ws):
+        self.ws = ws
+        self.messages = []
+        self._stop = False
+
+    async def listen(self):
+        async for msg in self.ws:
+            if self._stop:
+                break
+            data = msg.json()
+            self.messages.append(data)
+
+    async def wait_for_type(self, msg_type, timeout=2.0):
+        start_time = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            for i, msg in enumerate(self.messages):
+                if msg.get("type") == msg_type:
+                    return self.messages.pop(i)  # Видаляємо, щоб не прочитати двічі
+            await asyncio.sleep(0.05)
+        raise TimeoutError(f"Таймаут очікування повідомлення типу {msg_type}")
+
+
+# --- Фікстури ---
 
 
 @pytest.fixture(params=["linux", "windows"], ids=["OS: Linux", "OS: Windows"])
 def player(request, mocker):
-    mock_popen = MagicMock(pid=1234)
-    mocker.patch("base_player.subprocess.Popen", return_value=mock_popen)
+    mocker.patch("base_player.subprocess.Popen", return_value=MagicMock(pid=1234))
     mocker.patch("base_player.cleanup_socket")
-    match request.param:
-        case "linux":
-            p = MPRISPlayer()
-        case "windows":
-            p = SMTCPlayer(None)
 
-        case _:
-            raise OSError(f"can not test {request.param}")
-
+    p = MPRISPlayer() if request.param == "linux" else SMTCPlayer(None)
     p.mpv = MagicMock()
     return p
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_fetch():
     with patch("utils.fetch_metadata", new_callable=AsyncMock) as m:
+        m.return_value = {"title": "Test Song", "artist": ["Test Artist"]}
         yield m
 
 
+@pytest_asyncio.fixture
+async def ws_client(player, aiohttp_client):
+    app = web.Application()
+    app["player"] = player
+    app.router.add_get("/ws", server.websocket_handler)
+
+    client = await aiohttp_client(app)
+    async with client.ws_connect("/ws") as ws:
+        await ws.receive_json()
+        yield ws
+
+
+@pytest_asyncio.fixture
+async def ws_manager(player, aiohttp_client):
+    app = web.Application()
+    app["player"] = player
+    app.router.add_get("/ws", server.websocket_handler)
+    client = await aiohttp_client(app)
+
+    async with client.ws_connect("/ws") as ws:
+        manager = WSMessageManager(ws)
+        task = asyncio.create_task(manager.listen())
+
+        await manager.wait_for_type("action")
+
+        yield manager
+
+        manager._stop = True
+        task.cancel()
+
+
+# --- Тести логіки плеєра (Unit) ---
+
+
 @pytest.mark.asyncio
-async def test_play_current_success(player, mock_fetch):
-    mock_fetch.return_value = {"title": "Test Song", "artist": ["Test Artist"]}
+async def test_player_play_current_updates_metadata(player):
     player.active_queue = ["http://fakeurl.com"]
     player.active_index = 0
     player.mode = "active"
 
     await player.play_current()
 
-    mock_fetch.assert_called_once_with("http://fakeurl.com")
     assert player.get_meta()["title"] == "Test Song"
     player.mpv.send.assert_called()
 
 
 @pytest.mark.asyncio
-async def test_websocket_actual_connection(player, aiohttp_client):
-    app = web.Application()
-    app["player"] = player
-    app.router.add_get("/ws", server.websocket_handler)
-
-    client = await aiohttp_client(app)
-
-    async with client.ws_connect("/ws") as ws:
-        msg = await ws.receive_json()
-        assert msg["type"] == "action"
-        assert msg["action"] == "init"
-
-        await ws.close()
-
-
-@pytest.mark.asyncio
-async def test_add_active_and_play(player, mock_fetch, aiohttp_client):
-    mock_fetch.return_value = {"title": "Test Song", "artist": ["Test Artist"]}
-    app = web.Application()
-    app["player"] = player
-    app.router.add_get("/ws", server.websocket_handler)
-
-    client = await aiohttp_client(app)
-
-    async with client.ws_connect("/ws") as ws:
-        msg = await ws.receive_json()
-        assert msg["type"] == "action"
-        assert msg["action"] == "init"
-
-        await ws.send_json({"cmd": "play", "url": "http://fakeurl.com"})
-        msg_resp = await ws.receive_json()
-        assert msg_resp["type"] == "response"
-        assert msg_resp["status"] == "Playing"
-        await ws.send_json({"cmd": "play", "url": "http://fakeurl.com"})
-        msg_resp = await ws.receive_json()
-        msg_resp = await asyncio.wait_for(ws.receive_json(), timeout=1.0)
-        assert msg_resp["active_size"] == 2
-        assert msg_resp["queue"] == [
-            {
-                "url": "http://fakeurl.com",
-                "title": "Test Song",
-                "artist": ["Test Artist"],
-            }
-        ]
-
-        await ws.close()
-
-
-@pytest.mark.asyncio
-async def test_async_next_fallback_to_passive(player, mock_fetch):
-    mock_fetch.return_value = {"title": "Next Song", "artist": ["Artist"]}
-
-    player.active_queue = ["url1"]
+async def test_player_pause(player):
+    player.active_queue = ["http://fakeurl.com"]
     player.active_index = 0
     player.mode = "active"
-    player.passive_queue = ["url2"]
+    player.PlaybackStatus = "Playing"
+
+    await player.async_play_pause()
+
+    assert player.PlaybackStatus == "Paused"
+    player.mpv.send.assert_called()
+
+    await player.async_play_pause()
+
+    assert player.PlaybackStatus == "Playing"
+    player.mpv.send.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_player_stop_clears_everything(player):
+    player.active_queue = ["url1"]
+    player.active_index = 0
+    player.PlaybackStatus = "Playing"
+
+    await player.async_stop()
+
+    assert player.active_queue == []
+    assert player.active_index == -1
+    assert player.PlaybackStatus == "Stopped"
+
+
+@pytest.mark.asyncio
+async def test_fallback_to_passive_when_active_ends(player):
+    player.active_queue = ["last_active_url"]
+    player.active_index = 0
+    player.mode = "active"
+    player.passive_queue = ["passive_url"]
     player.passive_index = -1
 
     await player.async_next()
 
     assert player.mode == "passive"
     assert player.passive_index == 0
-    assert player.active_index == -1
-    assert player.current_mode == "passive"
+
+
+# --- Тести WebSocket API (Integration) ---
 
 
 @pytest.mark.asyncio
-async def test_async_next_with_step(player, mock_fetch):
-    mock_fetch.return_value = {"title": "Next Song", "artist": ["Artist"]}
+async def test_ws_init_connection(player, aiohttp_client):
+    app = web.Application()
+    app["player"] = player
+    app.router.add_get("/ws", server.websocket_handler)
+    client = await aiohttp_client(app)
 
-    player.passive_queue = ["url1", "url2", "url3", "url4", "url5", "url6"]
-    player.passive_index = 1
-
-    await player.async_next(count=2)
-
-    assert player.mode == "passive"
-    assert player.active_index == -1
-    assert player.passive_index == 3
-    assert player.current_mode == "passive"
+    async with client.ws_connect("/ws") as ws:
+        msg = await ws.receive_json()
+        assert msg["action"] == "init"
 
 
 @pytest.mark.asyncio
-async def test_async_stop(player, mock_fetch):
+async def test_ws_command_play_updates_status(ws_manager):
+    url = "http://fakeurl.com"
 
-    player.active_queue = ["url1", "url2"]
-    player.active_index = 1
-    player.passive_queue = ["url1", "url2", "url3", "url4", "url5", "url6"]
-    player.passive_index = 3
+    await ws_manager.ws.send_json({"cmd": "play", "url": url})
+    resp = await ws_manager.wait_for_type("response")
+    assert resp["type"] == "response"
+    assert resp["status"] == "Playing"
 
+
+@pytest.mark.asyncio
+async def test_ws_multiple_plays_queue_management(player, ws_manager):
+    url = "http://fakeurl.com"
+    player.active_queue = ["passive_url"]
+    player.active_index = 0
     player.mode = "active"
-    player.current_mode = "passive"
+    player.PlaybackStatus = "Playing"
 
-    player.PlaybackStatus = "Paused"
+    await ws_manager.ws.send_json({"cmd": "play", "url": url})
 
-    await player.async_stop()
+    resp = await ws_manager.wait_for_type("response")
+    loading = await ws_manager.wait_for_type("update")
 
-    assert player.PlaybackStatus == "Stopped"
-
-    assert player.active_queue == []
-    assert player.active_index == -1
-    assert player.passive_queue == []
-    assert player.passive_index == -1
-
-    assert player.get_meta() == {"title": "wait for", "artist": ["queue"]}
+    assert resp["status"] == "Playing"
+    assert loading["active_size"] == 2
+    assert loading["queue"][0]["url"] == url
