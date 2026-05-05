@@ -49,7 +49,7 @@ async def fetch_metadata(url):
             audio = EasyID3(url)
             return {
                 "title": audio.get("title", ["Невідомо"])[0],
-                "artist": [audio.get("artist", ["Невідомо"])[0]],
+                "artist": audio.get("artist", ["Невідомо"])[0],
             }
         except:
             return {"title": "Unknown File", "artist": ["Unknown"]}
@@ -77,7 +77,7 @@ async def fetch_metadata(url):
             return None
         cache[url] = {
             "title": data.get("title"),
-            "artist": [data.get("uploader", "Unknown")],
+            "artist": data.get("uploader", "Unknown"),
             "time": int(time.time()),
         }
         u = cache[url]

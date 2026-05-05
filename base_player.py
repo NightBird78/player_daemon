@@ -7,6 +7,7 @@ import subprocess
 import utils
 from itertools import islice
 import asyncio
+import random
 
 
 class BasePlayer(ABC):
@@ -151,8 +152,30 @@ class BasePlayer(ABC):
             self.passive_index = 0
             await self.play_current()
 
+    async def async_shuffle(self, *, ws_client=None):
+        is_active = self.current_mode == "active"
+        if not is_active:
+            if self.PlaybackStatus == "Playing":
+                await self.async_play_pause(broadcast=False)
+
+        temp_q = self.passive_queue.copy()
+
+        random.shuffle(temp_q)
+
+        self.passive_queue = deque(temp_q)
+
+        self.passive_index = -1
+        if not is_active:
+            await self.async_next(broadcast=False)
+
+        await self.broadcast_state("shuffle", ws_client=ws_client, update_queue=True)
+
     @abstractmethod
     def get_meta(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def set_meta(self, title, artist):
         raise NotImplementedError()
 
     @abstractmethod
@@ -160,7 +183,7 @@ class BasePlayer(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def async_next(self, *, ws_client=None, count=1):
+    async def async_next(self, *, broadcast=True, ws_client=None, count=1):
         raise NotImplementedError()
 
     @abstractmethod

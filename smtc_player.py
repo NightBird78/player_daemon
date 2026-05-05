@@ -37,6 +37,10 @@ class SMTCPlayer(BasePlayer):
         elif args.button == SystemMediaTransportControlsButton.NEXT:
             asyncio.run_coroutine_threadsafe(self.async_next(), self.loop)
 
+    def set_meta(self, title, artist):
+        self.Metadata["title"] = title
+        self.Metadata["artist"] = [artist]
+
     def get_meta(self):
         return {
             "title": self.Metadata.get("title", "Unknown"),
@@ -88,7 +92,7 @@ class SMTCPlayer(BasePlayer):
             "PlayPause", ws_client=ws_client, broadcast=broadcast
         )
 
-    async def async_next(self, *, ws_client=None, count=1):
+    async def async_next(self, *, broadcast=True, ws_client=None, count=1):
         local_count = max(1, count)
         if self.PlaybackStatus == "Playing":
             await self.async_play_pause(broadcast=False)
@@ -130,7 +134,11 @@ class SMTCPlayer(BasePlayer):
 
         self.update_smtc()
         await self.broadcast_state(
-            "Next", ws_client=ws_client, additional=res, update_queue=True
+            "Next",
+            broadcast=broadcast,
+            ws_client=ws_client,
+            additional=res,
+            update_queue=True,
         )
 
     async def async_stop(self, ws_client=None):
@@ -145,8 +153,7 @@ class SMTCPlayer(BasePlayer):
         self.active_index = -1
         self.passive_index = -1
 
-        self.Metadata["title"] = "wait for"
-        self.Metadata["artist"] = ["queue"]
+        self.set_meta("wait for", "queue")
 
         self.update_smtc()
         await self.broadcast_state("Stop/End", ws_client=ws_client, update_queue=True)

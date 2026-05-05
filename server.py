@@ -99,6 +99,9 @@ async def websocket_handler(request):
                 elif data["action"] == "stop":
                     await player.async_stop(ws_client=ws)
                     update = True
+                elif data["action"] == "shuffle":
+                    await player.async_shuffle(ws_client=ws)
+                    continue
             await send_data(
                 ws,
                 player,

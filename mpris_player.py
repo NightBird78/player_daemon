@@ -42,13 +42,16 @@ class MPRISPlayer(BasePlayer):
         }
 
     def _update_mpris_metadata(self, meta, additional: dict = {}):
-        self.Metadata["xesam:title"] = GLib.Variant("s", meta["title"])
-        self.Metadata["xesam:artist"] = GLib.Variant("as", meta["artist"])
+        self.set_meta(meta["title"], meta["artist"])
         self.PropertiesChanged(
             "org.mpris.MediaPlayer2.Player",
             {"Metadata": self.Metadata} | additional,
             [],
         )
+
+    def set_meta(self, title, artist):
+        self.Metadata["xesam:title"] = GLib.Variant("s", title)
+        self.Metadata["xesam:artist"] = GLib.Variant("as", artist)
 
     def get_meta(self):
         return {
@@ -81,13 +84,11 @@ class MPRISPlayer(BasePlayer):
     def Next(self):
         asyncio.create_task(self.async_next())
 
-    async def async_next(self, *, ws_client=None, count=1):
+    async def async_next(self, *, broadcast=True, ws_client=None, count=1):
         local_count = max(1, count)
         if self.PlaybackStatus == "Playing":
             await self.async_play_pause(broadcast=False)
-
-        self.Metadata["xesam:title"] = GLib.Variant("s", "loading")
-        self.Metadata["xesam:artist"] = GLib.Variant("as", ["loading"])
+        self.set_meta("loading", "loading")
         self._update_mpris_metadata(
             self.get_meta(),
             additional={"CanGoNext": False},
@@ -138,6 +139,7 @@ class MPRISPlayer(BasePlayer):
                 return
         await self.broadcast_state(
             "Next",
+            broadcast=broadcast,
             ws_client=ws_client,
             additional=res,
             update_queue=True,
@@ -176,6 +178,7 @@ class MPRISPlayer(BasePlayer):
         self.mpv.send({"command": ["quit"]})
         self.PlaybackStatus = "Stopped"
 
+        self.set_meta("wait for", "queue")
         self.Metadata["xesam:title"] = GLib.Variant("s", "wait for")
         self.Metadata["xesam:artist"] = GLib.Variant("as", ["queue"])
         self._update_mpris_metadata(

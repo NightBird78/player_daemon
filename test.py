@@ -4,6 +4,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from aiohttp import web
+import random
 
 # --- Системні моки (повинні бути до імпорту локальних модулів) ---
 mock_modules = [
@@ -70,6 +71,20 @@ def player(request, mocker):
 def mock_fetch():
     with patch("utils.fetch_metadata", new_callable=AsyncMock) as m:
         m.return_value = {"title": "Test Song", "artist": ["Test Artist"]}
+        yield m
+
+
+@pytest.fixture
+def mock_shuffle():
+    with patch("random.shuffle") as m:
+
+        def set_result(shuffled_list):
+            def side_effect(input_list):
+                input_list[:] = shuffled_list
+
+            m.side_effect = side_effect
+
+        m.set_result = set_result
         yield m
 
 
@@ -240,3 +255,81 @@ async def test_ws_eoq(player, ws_manager):
 
     assert resp["action"] == "Stop/End"
     assert resp["status"] == "Stopped"
+
+
+@pytest.mark.asyncio
+async def test_ws_shuffle_passive(mock_shuffle, player, ws_manager):
+    expected_result = ["url3", "url1", "url2"]
+    mock_shuffle.set_result(expected_result)
+
+    player.passive_queue = ["url1", "url2", "url3"]
+    player.passive_index = 1
+
+    player.PlaybackStatus = "Playing"
+
+    await ws_manager.ws.send_json({"cmd": "control", "action": "shuffle"})
+
+    response = await ws_manager.wait_for_type("response")
+    resp_loading = await ws_manager.wait_for_type("update")
+
+    assert response["passive_index"] == 0
+    assert len(resp_loading["queue"]) == 2
+
+    assert list(player.passive_queue) == expected_result
+
+    mock_shuffle.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ws_shuffle_passive_while_active(mock_shuffle, player, ws_manager):
+    expected_result = ["url3", "url1", "url2"]
+    mock_shuffle.set_result(expected_result)
+
+    player.passive_queue = ["url1", "url2", "url3"]
+    player.passive_index = 1
+    player.active_queue = ["url0"]
+    player.active_index = 0
+    player.mode = "active"
+    player.current_mode = "active"
+
+    player.PlaybackStatus = "Playing"
+
+    await ws_manager.ws.send_json({"cmd": "control", "action": "shuffle"})
+
+    response = await ws_manager.wait_for_type("response")
+    resp_loading = await ws_manager.wait_for_type("update")
+
+    assert response["passive_index"] == -1
+    assert len(resp_loading["queue"]) == 3
+
+    assert list(player.passive_queue) == expected_result
+
+    mock_shuffle.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ws_shuffle_passive_switch_active(mock_shuffle, player, ws_manager):
+    expected_result = ["url3", "url1", "url2"]
+    mock_shuffle.set_result(expected_result)
+
+    player.passive_queue = ["url1", "url2", "url3"]
+    player.passive_index = 1
+    player.active_queue = ["url0"]
+    player.active_index = -1
+    player.mode = "active"
+    player.current_mode = "passive"
+
+    player.PlaybackStatus = "Playing"
+
+    await ws_manager.ws.send_json({"cmd": "control", "action": "shuffle"})
+
+    response = await ws_manager.wait_for_type("response")
+    resp_loading = await ws_manager.wait_for_type("update")
+
+    assert response["passive_index"] == -1
+    assert response["active_index"] == 0
+    assert len(resp_loading["queue"]) == 3
+
+    assert list(player.passive_queue) == expected_result
+
+    mock_shuffle.assert_called_once()
