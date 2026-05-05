@@ -115,8 +115,10 @@ class MPRISPlayer(BasePlayer):
                     self.mode = "passive"
                     self.current_mode = "passive"
                     await self.async_next(ws_client=ws_client, count=local_count + 1)
+                    return
                 else:
                     await self.async_stop(ws_client=ws_client)
+                    return
 
         else:
             self.current_mode = "passive"
@@ -132,8 +134,8 @@ class MPRISPlayer(BasePlayer):
                 res = {"current": self.passive_queue[self.passive_index]}
 
             else:
-                await self.async_stop(broadcast=False)
-
+                await self.async_stop(ws_client=ws_client)
+                return
         await self.broadcast_state(
             "Next",
             ws_client=ws_client,
@@ -186,9 +188,7 @@ class MPRISPlayer(BasePlayer):
         self.active_index = -1
         self.passive_index = -1
 
-        await self.broadcast_state(
-            "PlayPause", ws_client=ws_client, broadcast=broadcast, update_queue=True
-        )
+        await self.broadcast_state("Stop/End", ws_client=ws_client, broadcast=broadcast)
 
     def Raise(self):
         pass

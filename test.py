@@ -7,6 +7,8 @@ from aiohttp import web
 
 # --- Системні моки (повинні бути до імпорту локальних модулів) ---
 mock_modules = [
+    "gi",
+    "gi.repository",
     "pydbus",
     "pydbus.generic",
     "gbulb",
@@ -46,7 +48,7 @@ class WSMessageManager:
         while asyncio.get_event_loop().time() - start_time < timeout:
             for i, msg in enumerate(self.messages):
                 if msg.get("type") == msg_type:
-                    return self.messages.pop(i)  # Видаляємо, щоб не прочитати двічі
+                    return self.messages.pop(i)
             await asyncio.sleep(0.05)
         raise TimeoutError(f"Таймаут очікування повідомлення типу {msg_type}")
 
@@ -190,9 +192,10 @@ async def test_ws_command_play_updates_status(ws_manager):
 @pytest.mark.asyncio
 async def test_ws_multiple_plays_queue_management(player, ws_manager):
     url = "http://fakeurl.com"
-    player.active_queue = ["passive_url"]
-    player.active_index = 0
+    player.passive_queue = ["url"]
+    player.passive_index = 0
     player.mode = "active"
+    player.current_mode = "passive"
     player.PlaybackStatus = "Playing"
 
     await ws_manager.ws.send_json({"cmd": "play", "url": url})
@@ -201,5 +204,39 @@ async def test_ws_multiple_plays_queue_management(player, ws_manager):
     loading = await ws_manager.wait_for_type("update")
 
     assert resp["status"] == "Playing"
-    assert loading["active_size"] == 2
+    assert resp["active_size"] == 1
+    assert resp["passive_size"] == 1
+    assert loading["active_size"] == 1
+    assert loading["passive_size"] == 1
     assert loading["queue"][0]["url"] == url
+
+
+@pytest.mark.asyncio
+async def test_ws_play_next(player, ws_manager):
+    player.active_queue = ["url1", "url2"]
+    player.active_index = 0
+    player.mode = "active"
+    player.current_mode = "active"
+    player.PlaybackStatus = "Playing"
+
+    await ws_manager.ws.send_json({"cmd": "control", "action": "next"})
+
+    resp = await ws_manager.wait_for_type("response")
+
+    assert resp["status"] == "Playing"
+    assert resp["active_index"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ws_eoq(player, ws_manager):
+    player.passive_queue = ["passive_url"]
+    player.passive_index = 0
+    player.mode = "passive"
+    player.PlaybackStatus = "Playing"
+
+    await player.async_next()
+
+    resp = await ws_manager.wait_for_type("action")
+
+    assert resp["action"] == "Stop/End"
+    assert resp["status"] == "Stopped"

@@ -17,8 +17,14 @@ async def ws_broadcast(data, _except=None, _only=None):
             connected_clients.remove(_only)
         return
 
+    if _except:
+        try:
+            await _except.send_json(data | {"type": "response"})
+        except:
+            connected_clients.remove(_except)
+
     for ws in list(connected_clients):
-        if _except and _except is ws:
+        if (_except and (_except is ws)) or (_only and (_only is ws)):
             continue
         try:
             await ws.send_json(data)
@@ -81,12 +87,12 @@ async def websocket_handler(request):
                     if cmd in buckets:
                         buckets[cmd]["task"].cancel()
                         buckets[cmd]["count"] += 1
-                        buckets[cmd]["data"] = data
                     else:
-                        buckets[cmd] = {"count": 1, "data": data, "task": None}
+                        buckets[cmd] = {"count": 1, "task": None}
                     buckets[cmd]["task"] = asyncio.create_task(
                         delayed_execution(cmd, player, ws)
                     )
+                    continue
                 elif data["action"] == "pause":
                     await player.async_play_pause(ws_client=ws)
 
@@ -110,14 +116,13 @@ async def delayed_execution(cmd, player, ws):
         await asyncio.sleep(DEBOUNCE_TIME)
         bucket = buckets.get(cmd)
         if bucket:
-            await process_command(cmd, player, ws, bucket["data"], bucket["count"])
+            await process_command(cmd, player, ws, bucket["count"])
     except asyncio.CancelledError:
         pass
 
 
-async def process_command(cmd, player, ws, data, count):
+async def process_command(cmd, player, ws, count):
     """Функція, яка реально виконує логіку після затримки"""
-    # Тут твоя логіка обробки
     await player.async_next(ws_client=ws, count=count)
     buckets.pop(cmd, None)
 

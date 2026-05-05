@@ -149,4 +149,4 @@ class SMTCPlayer(BasePlayer):
         self.Metadata["artist"] = ["queue"]
 
         self.update_smtc()
-        await self.broadcast_state("Stop", ws_client=ws_client, update_queue=True)
+        await self.broadcast_state("Stop/End", ws_client=ws_client, update_queue=True)
