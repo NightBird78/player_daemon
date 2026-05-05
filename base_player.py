@@ -167,7 +167,7 @@ class BasePlayer(ABC):
         random.shuffle(temp_q)
 
         self.passive_queue = deque(temp_q)
-
+        self.queue_list.clear()
         self.passive_index = -1
         if not is_active:
             await self.async_next(broadcast=False)

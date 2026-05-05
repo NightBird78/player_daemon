@@ -95,7 +95,7 @@ async def websocket_handler(request):
                     continue
                 elif data["action"] == "pause":
                     await player.async_play_pause(ws_client=ws)
-
+                    continue
                 elif data["action"] == "stop":
                     await player.async_stop(ws_client=ws)
                     update = True
