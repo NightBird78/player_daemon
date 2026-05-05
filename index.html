@@ -123,8 +123,8 @@
         }
 
         .player-card.active .placeholder-fill { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-        .player-card.passive .placeholder-fill { background: var(--action-color); box-shadow: none; }
-        .player-card.stopped .placeholder-fill { background: #333; }
+        .player-card.passive .placeholder-fill { background: var(--action-color); box-shadow: 0 0 8px var(--action-color); }
+        .player-card.stopped .placeholder-fill { background: #333;  box-shadow: none; }
         
         .player-card.active .btn-circle { background: var(--accent); }
         .player-card.passive .btn-circle { background: var(--action-color); }
@@ -134,10 +134,10 @@
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
-            margin-top: 15px;
             max-height: 300px;
             overflow-y: auto;
             width: 100%;
+            padding: 8px 0
         }
 
         .queue-item {
@@ -152,7 +152,17 @@
             text-overflow: ellipsis;
             animation: fadeIn 0.3s ease;
             width: 100%;
+            box-shadow: 0px 4px 8px -4px rgba(0, 0, 0, 0.5);
+            margin: 0 2px
         }
+
+        .queue-item.active {
+            box-shadow: 0px 3px 6px -4px var(--accent);
+        }
+        .queue-item.passive {
+            box-shadow: 0px 3px 6px -4px var(--action-color);
+        }
+        
 
         .track-info { text-align: center; margin-bottom: 20px; width: 100%; }
         #current-track { 
@@ -194,7 +204,7 @@
             color: #555;
         }
         .btn-circle .mdi {
-            font-size: 24px; /* Розмір іконки */
+            font-size: 24px;
             line-height: 1;
             display: flex;
             align-items: center;
@@ -356,6 +366,7 @@
                     
                     span.appendChild(titleDiv);
                     span.appendChild(artistDiv);
+                    span.classList.add(track.type === "active" ? "active" : "passive")
                     
                     cloudContainer.appendChild(span);
                 });

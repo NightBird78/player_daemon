@@ -50,8 +50,10 @@ class MPRISPlayer(BasePlayer):
         )
 
     def set_meta(self, title, artist):
+        if isinstance(artist, list):
+            artist = artist[0]
         self.Metadata["xesam:title"] = GLib.Variant("s", title)
-        self.Metadata["xesam:artist"] = GLib.Variant("as", artist)
+        self.Metadata["xesam:artist"] = GLib.Variant("as", [artist])
 
     def get_meta(self):
         return {
@@ -102,7 +104,7 @@ class MPRISPlayer(BasePlayer):
                 await self.play_current()
 
                 try:
-                    self.queue_list.pop(0)
+                    self.queue_list = self.queue_list[local_count:]
                 except:
                     pass
 
@@ -128,7 +130,7 @@ class MPRISPlayer(BasePlayer):
                 await self.play_current()
 
                 try:
-                    self.queue_list.pop(0)
+                    self.queue_list = self.queue_list[local_count:]
                 except:
                     pass
 
@@ -179,8 +181,6 @@ class MPRISPlayer(BasePlayer):
         self.PlaybackStatus = "Stopped"
 
         self.set_meta("wait for", "queue")
-        self.Metadata["xesam:title"] = GLib.Variant("s", "wait for")
-        self.Metadata["xesam:artist"] = GLib.Variant("as", ["queue"])
         self._update_mpris_metadata(
             self.get_meta(),
             additional={"CanGoNext": False},

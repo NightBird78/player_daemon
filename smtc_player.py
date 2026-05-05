@@ -104,7 +104,7 @@ class SMTCPlayer(BasePlayer):
                 await self.play_current()
 
                 try:
-                    self.queue_list.pop(0)
+                    self.queue_list = self.queue_list[local_count:]
                 except:
                     pass
 
@@ -124,7 +124,7 @@ class SMTCPlayer(BasePlayer):
                 await self.play_current()
 
                 try:
-                    self.queue_list.pop(0)
+                    self.queue_list = self.queue_list[local_count:]
                 except:
                     pass
 

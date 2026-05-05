@@ -125,7 +125,6 @@ async def delayed_execution(cmd, player, ws):
 
 
 async def process_command(cmd, player, ws, count):
-    """Функція, яка реально виконує логіку після затримки"""
     await player.async_next(ws_client=ws, count=count)
     buckets.pop(cmd, None)
 

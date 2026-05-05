@@ -64,25 +64,29 @@ class BasePlayer(ABC):
     async def _update_queue(self):
         async with self.lock:
             self.queue_list.clear()
-            queue_list_temp = []
+            queue_list_temp = {}
 
             start_active = self.active_index + 1
-            queue_list_temp = list(
-                islice(self.active_queue, start_active, start_active + NEXT_QUEUE_LEN)
-            )
+            queue_list_temp = {
+                item: "active"
+                for item in islice(
+                    self.active_queue, start_active, start_active + NEXT_QUEUE_LEN
+                )
+            }
 
             remaining_slots = NEXT_QUEUE_LEN - len(queue_list_temp)
             if remaining_slots > 0:
                 start_passive = self.passive_index + 1
-                queue_list_temp.extend(
-                    islice(
+                queue_list_temp = queue_list_temp | {
+                    item: "passive"
+                    for item in islice(
                         self.passive_queue,
                         start_passive,
                         start_passive + remaining_slots,
                     )
-                )
+                }
             errors = False
-            for q in queue_list_temp:
+            for q, v in queue_list_temp.items():
                 meta = await utils.fetch_metadata(q)
                 if meta is None:
                     errors = True
@@ -92,7 +96,7 @@ class BasePlayer(ABC):
                         self.passive_queue.remove(q)
                     print(f"WARN: Found error-link {q}")
                     continue
-                self.queue_list.append({"url": q} | meta)
+                self.queue_list.append({"url": q, "type": v} | meta)
             if len(self.queue_list) > 0:
                 await self.broadcast_state("queue", type="update")
             if errors:

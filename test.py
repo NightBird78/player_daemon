@@ -4,7 +4,6 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from aiohttp import web
-import random
 
 # --- Системні моки (повинні бути до імпорту локальних модулів) ---
 mock_modules = [
@@ -89,18 +88,6 @@ def mock_shuffle():
 
 
 @pytest_asyncio.fixture
-async def ws_client(player, aiohttp_client):
-    app = web.Application()
-    app["player"] = player
-    app.router.add_get("/ws", server.websocket_handler)
-
-    client = await aiohttp_client(app)
-    async with client.ws_connect("/ws") as ws:
-        await ws.receive_json()
-        yield ws
-
-
-@pytest_asyncio.fixture
 async def ws_manager(player, aiohttp_client):
     app = web.Application()
     app["player"] = player
@@ -130,7 +117,8 @@ async def test_player_play_current_updates_metadata(player):
 
     await player.play_current()
 
-    assert player.get_meta()["title"] == "Test Song"
+    meta = player.get_meta()
+    assert meta == {"title": "Test Song", "artist": ["Test Artist"]}
     player.mpv.send.assert_called()
 
 
@@ -255,6 +243,37 @@ async def test_ws_eoq(player, ws_manager):
 
     assert resp["action"] == "Stop/End"
     assert resp["status"] == "Stopped"
+
+
+@pytest.mark.asyncio
+async def test_ws_queue_structure(player, ws_manager):
+    expected = {
+        "url2": "active",
+        "url3": "active",
+        "url4": "passive",
+        "url5": "passive",
+        "url6": "passive",
+    }
+
+    player.active_queue = ["url1", "url2", "url3"]
+    player.passive_queue = ["url4", "url5", "url6"]
+
+    player.active_index = 0
+    player.passive_index = -1
+
+    player.mode = "active"
+    player.PlaybackStatus = "Playing"
+
+    await player._update_queue()
+
+    resp_loading = await ws_manager.wait_for_type("update")
+
+    assert len(resp_loading["queue"]) == 5
+    actual = {}
+    for i in resp_loading["queue"]:
+        actual[i["url"]] = i["type"]
+
+    assert actual == expected
 
 
 @pytest.mark.asyncio
