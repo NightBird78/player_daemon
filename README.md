@@ -1,7 +1,3 @@
-**Оновлена та покращена версія README**
-
----
-
 # Advanced WebSocket Player Daemon
 
 **Сучасний дистанційний аудіоплеєр** для Linux (і Windows) з підтримкою YouTube та локальних файлів.
