@@ -65,12 +65,13 @@ async def websocket_handler(request):
 
             # ACTIVE playback
             if cmd == "play":
-                await player.add_active(data["url"])
-                update = True
+                update = await player.add_active(data["url"])
+                if not update:
+                    addi["warning"] = "cannot add playlist in active"
 
-            elif cmd == "active_playlist":
-                items = await utils.load_youtube_playlist(data["url"])
-                await player.set_active_queue(items)
+            # elif cmd == "active_playlist":
+            # items = await utils.load_youtube_playlist(data["url"])
+            # await player.set_active_queue(items)
 
             # PASSIVE queue
             elif cmd == "playlist":
@@ -98,7 +99,7 @@ async def websocket_handler(request):
                     continue
                 elif data["action"] == "stop":
                     await player.async_stop(ws_client=ws)
-                    update = True
+                    continue
                 elif data["action"] == "shuffle":
                     await player.async_shuffle(ws_client=ws)
                     continue

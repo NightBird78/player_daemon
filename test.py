@@ -73,6 +73,13 @@ def mock_fetch():
         yield m
 
 
+@pytest.fixture(autouse=True)
+def mock_playlist():
+    with patch("utils.is_playlist", new_callable=AsyncMock) as m:
+        m.return_value = False
+        yield m
+
+
 @pytest.fixture
 def mock_shuffle():
     with patch("random.shuffle") as m:

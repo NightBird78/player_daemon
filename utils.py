@@ -3,6 +3,27 @@ from mutagen.easyid3 import EasyID3
 import asyncio
 import os
 import time
+from yt_dlp import YoutubeDL
+
+
+async def is_playlist(url):
+    """Перевіряє, чи є посилання плейлистом, без важких операцій"""
+    ydl_opts = {
+        "quiet": True,
+        "extract_flat": True,
+        "no_warnings": True,
+        "simulate": True,
+    }
+
+    def check():
+        with YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(url, download=False)
+                return info.get("_type") == "playlist" or "entries" in info
+            except Exception:
+                return False
+
+    return await asyncio.to_thread(check)
 
 
 async def stream_links_async(url):

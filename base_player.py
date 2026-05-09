@@ -122,6 +122,8 @@ class BasePlayer(ABC):
         return None
 
     async def add_active(self, item):
+        if await utils.is_playlist(item):
+            return False
         self.active_queue.append(item)
 
         self.mode = "active"
@@ -130,6 +132,7 @@ class BasePlayer(ABC):
             self.active_index = 0
             self.current_mode = "active"
             await self.play_current()
+        return True
 
     async def set_active_queue(self, items):
         self.active_queue = deque(items)
