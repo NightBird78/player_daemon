@@ -1,7 +1,6 @@
 from gi.repository import GLib
 from pydbus.generic import signal
 from base_player import BasePlayer
-import utils
 from config import MPRIS_SOCKET, IDENTITY
 import asyncio
 
@@ -41,7 +40,7 @@ class MPRISPlayer(BasePlayer):
             "xesam:artist": GLib.Variant("as", ["queue"]),
         }
 
-    def _update_mpris_metadata(self, meta, additional: dict = {}):
+    def update_widget(self, meta, additional: dict = {}, **kw):
         self.set_meta(meta["title"], meta["artist"])
         self.PropertiesChanged(
             "org.mpris.MediaPlayer2.Player",
@@ -61,91 +60,11 @@ class MPRISPlayer(BasePlayer):
             "artist": self.Metadata["xesam:artist"].unpack(),
         }
 
-    async def play_current(self):
-        url = (
-            self.active_queue[self.active_index]
-            if self.mode == "active"
-            else self.passive_queue[self.passive_index]
-        )
-        meta = await utils.fetch_metadata(url)
-        if meta is None:
-            asyncio.create_task(self.async_next())
-            return
-
-        if not self.proc:
-            self.init_mpv(url)
-        else:
-            self.mpv.send({"command": ["loadfile", url, "replace"]})
-
-        await self.async_play_pause(broadcast=False)
-        self._update_mpris_metadata(meta, {"CanGoNext": True})
-
     # =========================
     # Navigation
     # =========================
     def Next(self):
         asyncio.create_task(self.async_next())
-
-    async def async_next(self, *, broadcast=True, ws_client=None, count=1):
-        local_count = max(1, count)
-        if self.PlaybackStatus == "Playing":
-            await self.async_play_pause(broadcast=False)
-        self.set_meta("loading", "loading")
-        self._update_mpris_metadata(
-            self.get_meta(),
-            additional={"CanGoNext": False},
-        )
-
-        res = {}
-        if self.mode == "active":
-            self.current_mode = "active"
-            if self.active_index + local_count < len(self.active_queue):
-                self.active_index += local_count
-                await self.play_current()
-
-                try:
-                    self.queue_list = self.queue_list[local_count:]
-                except:
-                    pass
-
-                res = {"current": self.active_queue[self.active_index]}
-            else:
-                local_count = (self.active_index + local_count) - len(self.active_queue)
-                self.active_queue.clear()
-                self.active_index = -1
-
-                if self.passive_queue:
-                    self.mode = "passive"
-                    self.current_mode = "passive"
-                    await self.async_next(ws_client=ws_client, count=local_count + 1)
-                    return
-                else:
-                    await self.async_stop(ws_client=ws_client)
-                    return
-
-        else:
-            self.current_mode = "passive"
-            if self.passive_index + local_count < len(self.passive_queue):
-                self.passive_index += local_count
-                await self.play_current()
-
-                try:
-                    self.queue_list = self.queue_list[local_count:]
-                except:
-                    pass
-
-                res = {"current": self.passive_queue[self.passive_index]}
-
-            else:
-                await self.async_stop(ws_client=ws_client)
-                return
-        await self.broadcast_state(
-            "Next",
-            broadcast=broadcast,
-            ws_client=ws_client,
-            additional=res,
-            update_queue=True,
-        )
 
     # =========================
     # Controls
@@ -153,45 +72,8 @@ class MPRISPlayer(BasePlayer):
     def PlayPause(self):
         asyncio.create_task(self.async_play_pause())
 
-    async def async_play_pause(self, *, ws_client=None, broadcast: bool = True):
-        if len(self.active_queue) == 0 and len(self.passive_queue) == 0:
-            return
-
-        self.mpv.send({"command": ["cycle", "pause"]})
-
-        self.PlaybackStatus = (
-            "Paused" if self.PlaybackStatus == "Playing" else "Playing"
-        )
-
-        self.PropertiesChanged(
-            "org.mpris.MediaPlayer2.Player",
-            {"PlaybackStatus": self.PlaybackStatus, "CanGoNext": True},
-            [],
-        )
-
-        await self.broadcast_state(
-            "PlayPause", ws_client=ws_client, broadcast=broadcast
-        )
-
     def Stop(self, *, ws_client=None):
         asyncio.create_task(self.async_stop())
-
-    async def async_stop(self, *, ws_client=None, broadcast=True):
-        self.mpv.send({"command": ["quit"]})
-        self.PlaybackStatus = "Stopped"
-
-        self.set_meta("wait for", "queue")
-        self._update_mpris_metadata(
-            self.get_meta(),
-            additional={"CanGoNext": False},
-        )
-        self.active_queue.clear()
-        self.passive_queue.clear()
-
-        self.active_index = -1
-        self.passive_index = -1
-
-        await self.broadcast_state("Stop/End", ws_client=ws_client, broadcast=broadcast)
 
     def Raise(self):
         pass

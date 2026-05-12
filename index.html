@@ -55,15 +55,60 @@
             border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
-            transition: 1s;
+            transition: .3s;
         }
 
         button:hover:not(:disabled) { transform: scale(1.05); }
         button:disabled { cursor: default; background: #222 }
 
+        .split-container {
+            display: inline-flex;
+            align-items: stretch;
+            height: 40px; /* налаштуй під себе */
+        }
+        
         .send-btn {
             background: var(--accent);
             color: var(--bg-color);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        
+        /* Прибираємо радіус справа у головної кнопки */
+        .main-action {
+            border-radius: 8px 0 0 8px; 
+        }
+        
+        /* Прибираємо радіус зліва у стрілочки */
+        .arrow-toggle {
+            border-radius: 0 8px 8px 0;
+            padding: 0 8px;
+            border-left: 1px solid rgba(0,0,0,0.1); /* тонка лінія розрізу */
+        }
+        
+        /* Контейнер для випадаючого списку */
+        .dropdown-wrapper {
+            position: relative;
+            display: flex;
+        }
+        
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            top: 110%;
+            right: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100;
+            overflow: hidden;
+        }
+
+        .show {
+            display: block !important;
         }
 
         .main-grid {
@@ -220,7 +265,19 @@
             <option value="playlist">Playlist</option>
         </select>
         <input type="text" id="messageInput" placeholder="URL або назва треку...">
-        <button id="sendBtn" class="send-btn" onclick="sendInputMessage()">Додати</button>
+        <div class="split-container">
+            <button id="sendBtn" class="send-btn main-action" onclick="sendInputMessage()">Додати</button>
+            <div class="dropdown-wrapper">
+                <button class="send-btn arrow-toggle" onclick="toggleDropdown(event)">
+                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <div id="myDropdown" class="dropdown-content">
+                    <button id="dropDownBtn" class="send-btn" onclick="sendListMessage()">Локальне</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="main-grid">
@@ -275,6 +332,8 @@
         const responseLog = document.getElementById('response-log');
         const input = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
+        const dropDownBtn = document.getElementById('dropDownBtn');
+
         const progressBar = document.getElementById('progressBarFill');
 
         const stopBtn = document.getElementById('stop-btn')
@@ -286,6 +345,7 @@
         nextBtn.disabled = true
         
         sendBtn.disabled = true
+        dropDownBtn.disabled = true
         let socket;
 
         function connect() {
@@ -294,6 +354,7 @@
             socket.onopen = () => {
                 addLog(responseLog, "З'єднання встановлено", "res-tag");
                 sendBtn.disabled = false;
+                dropDownBtn.disabled = false;
 
                 stopBtn.disabled = false;
                 pauseBtn.disabled = false;
@@ -313,6 +374,7 @@
             socket.onclose = () => {
                 addLog(responseLog, "З'єднання розірвано. Перепідключення...", "res-tag");
                 sendBtn.disabled = true;
+                dropDownBtn.disabled = true
 
                 stopBtn.disabled = true
                 pauseBtn.disabled = true
@@ -322,6 +384,25 @@
                 updatePlayerUI({"Status": "Stopped"})
                 setTimeout(connect, 3000);
             };
+        }
+
+        function toggleDropdown(event) {
+            event.stopPropagation();
+            document.getElementById("myDropdown").classList.toggle("show");
+        }
+
+        function sendListMessage() {
+            sendCommand({ cmd: "localplaylist" });
+            document.getElementById("myDropdown").classList.remove("show");
+        }
+
+        window.onclick = function(event) {
+            if (!event.target.matches('.arrow-toggle')) {
+                const dropdown = document.getElementById("myDropdown");
+                if (dropdown.classList.contains('show')) {
+                    dropdown.classList.remove('show');
+                }
+            }
         }
 
         function updatePlayerUI(data) {
@@ -349,7 +430,7 @@
             document.getElementById('current-track').innerText = trackTitle;
 
             const cloudContainer = document.getElementById('queue-cloud-container');
-            cloudContainer.innerHTML = ''; // Очищуємо старі хмарки
+            cloudContainer.innerHTML = ''; 
         
             if (!isStopped && data.queue && Array.isArray(data.queue)) {
                 data.queue.forEach((track, index) => {

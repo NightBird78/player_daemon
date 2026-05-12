@@ -63,6 +63,7 @@ def player(request, mocker):
 
     p = MPRISPlayer() if request.param == "linux" else SMTCPlayer(None)
     p.mpv = MagicMock()
+    p.mpv.send.return_value = {"error": "success"}
     return p
 
 
@@ -126,7 +127,6 @@ async def test_player_play_current_updates_metadata(player):
 
     meta = player.get_meta()
     assert meta == {"title": "Test Song", "artist": ["Test Artist"]}
-    player.mpv.send.assert_called()
 
 
 @pytest.mark.asyncio

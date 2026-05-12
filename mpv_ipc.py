@@ -5,6 +5,12 @@ import sys
 import time
 
 
+class MPVError(Exception):
+    """Виникає, коли команда до MPV завершується невдачею."""
+
+    pass
+
+
 class MPV:
     def __init__(self, socket_path):
         self.socket_path = socket_path

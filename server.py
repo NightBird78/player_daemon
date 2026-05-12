@@ -2,8 +2,10 @@ import json
 import asyncio
 import aiohttp
 from aiohttp import web
-from config import PORT
+from config import PORT, LOCAL_DIR
 import utils
+from pathlib import Path
+import mimetypes
 
 
 connected_clients = set()
@@ -69,15 +71,13 @@ async def websocket_handler(request):
                 if not update:
                     addi["warning"] = "cannot add playlist in active"
 
-            # elif cmd == "active_playlist":
-            # items = await utils.load_youtube_playlist(data["url"])
-            # await player.set_active_queue(items)
-
             # PASSIVE queue
             elif cmd == "playlist":
                 asyncio.create_task(
                     process_playlist_background(data["url"], player, ws)
                 )
+            elif cmd == "localplaylist":
+                asyncio.create_task(process_local(player, ws))
 
             elif cmd == "add":
                 await player.add_passive(data["url"])
@@ -128,6 +128,40 @@ async def delayed_execution(cmd, player, ws):
 async def process_command(cmd, player, ws, count):
     await player.async_next(ws_client=ws, count=count)
     buckets.pop(cmd, None)
+
+
+async def process_local(player, ws):
+    try:
+        if LOCAL_DIR is None:
+            await send_data(
+                ws,
+                player,
+                "warning",
+                _only=True,
+                additional={"warning": "localdir is not defined"},
+            )
+        else:
+            update = True
+            path = Path(LOCAL_DIR)
+            for item in path.rglob("*"):
+                if item.is_dir():
+                    continue
+                mime_type, _ = mimetypes.guess_type(item)
+                if not mime_type:
+                    continue
+                if not mime_type.startswith("audio/"):
+                    continue
+                await player.add_passive(str(item.absolute()))
+
+                if len(player.passive_queue) % 10 == 0:
+                    await asyncio.sleep(0)
+
+                if len(player.passive_queue) % 200 == 0:
+                    await send_data(ws, player, "Loading", update_queue=update)
+                    update = False
+            await send_data(ws, player, "Loading", update_queue=update)
+    except Exception as e:
+        print(f"Помилка завантаження локальних файлів: {e}")
 
 
 async def process_playlist_background(url, player, ws):
