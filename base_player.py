@@ -265,9 +265,10 @@ class BasePlayer(ABC):
                 self.active_queue.clear()
                 self.active_index = -1
 
+                self.mode = "passive"
+                self.current_mode = "passive"
+
                 if self.passive_queue:
-                    self.mode = "passive"
-                    self.current_mode = "passive"
                     await self.async_next(ws_client=ws_client, count=local_count + 1)
                     return
                 else:
