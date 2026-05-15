@@ -3,124 +3,96 @@
 <head>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Adv WS Player</title>
     <style>
         :root {
             --bg-color: #0f0f0f;
             --card-bg: #1a1a1a;
             --accent: #03dac6;
-            --text: #e0e0e0;
             --action-color: #bb86fc;
+            --text: #e0e0e0;
             --response-color: #4caf50;
+            --panel-bg: #252525;
         }
 
         body {
             background-color: var(--bg-color);
             color: var(--text);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            padding: 20px;
+            min-height: 100vh;
+            padding: 15px;
             box-sizing: border-box;
-            cursor: default;
         }
 
         .header-panel {
             display: flex;
+            flex-direction: row;
+            align-items: center;
             gap: 10px;
-            max-width: 1000px;
+            max-width: 1200px;
             width: 100%;
             margin: 0 auto 20px auto;
+        }
+
+        #actionSelect {
+            min-width: 100px;
+            height: 45px;
+        }
+
+        .input-group {
+            flex-grow: 1;
+        }
+
+        .split-container {
+            display: flex;
+            min-width: 150px;
+            height: 45px;
         }
 
         input, select {
             background: var(--card-bg);
             border: 1px solid #333;
             color: white;
-            padding: 12px;
+            padding: 0 12px;
             border-radius: 8px;
             outline: none;
+            font-size: 14px;
+            height: 45px;
+            box-sizing: border-box;
         }
 
-        input { flex-grow: 1; }
-        select { color: var(--accent); font-weight: bold; }
+        input { width: 100%; }
+        select { color: var(--accent); font-weight: bold; cursor: pointer; }
 
-        button {
-            padding: 10px 25px;
-            background: #222;
-            color: #555;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: .3s;
-        }
-
-        button:hover:not(:disabled) { transform: scale(1.05); }
-        button:disabled { cursor: default; background: #222 }
-
-        .split-container {
-            display: inline-flex;
-            align-items: stretch;
-            height: 40px; /* налаштуй під себе */
-        }
-        
         .send-btn {
             background: var(--accent);
             color: var(--bg-color);
             border: none;
             cursor: pointer;
+            font-weight: bold;
+            transition: .2s;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
-        }
-        
-        /* Прибираємо радіус справа у головної кнопки */
-        .main-action {
-            border-radius: 8px 0 0 8px; 
-        }
-        
-        /* Прибираємо радіус зліва у стрілочки */
-        .arrow-toggle {
-            border-radius: 0 8px 8px 0;
-            padding: 0 8px;
-            border-left: 1px solid rgba(0,0,0,0.1); /* тонка лінія розрізу */
-        }
-        
-        /* Контейнер для випадаючого списку */
-        .dropdown-wrapper {
-            position: relative;
-            display: flex;
-        }
-        
-        .dropdown-content {
-            display: none;
-            position: absolute;
-            top: 110%;
-            right: 12px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 100;
-            overflow: hidden;
+            height: 100%;
         }
 
-        .show {
-            display: block !important;
-        }
+        .main-action { flex-grow: 1; border-radius: 8px 0 0 8px; }
+        .arrow-toggle { border-radius: 0 8px 8px 0; border-left: 1px solid rgba(0,0,0,0.1); padding: 0 10px; }
+        .send-btn:hover:not(:disabled) { opacity: 0.9; }
+        .send-btn:disabled { background: #333 !important; color: #666; cursor: not-allowed; }
 
         .main-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 300px;
             gap: 20px;
-            flex-grow: 1;
             max-width: 1200px;
             width: 100%;
             margin: 0 auto;
-            min-height: 0;
-            max-height: 500px;
+            grid-template-columns: 1fr 1fr 320px;
         }
 
         .log-container {
@@ -129,16 +101,18 @@
             display: flex;
             flex-direction: column;
             border: 1px solid #222;
-            overflow: hidden;
+            height: 450px;
         }
 
         .log-header {
-            padding: 10px 15px;
-            background: #252525;
-            font-size: 12px;
+            padding: 12px 15px;
+            background: var(--panel-bg);
+            font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 1px;
             border-bottom: 1px solid #333;
+            font-weight: bold;
+            border-radius: 12px 12px 0 0;
         }
 
         .log-box {
@@ -146,114 +120,141 @@
             overflow-y: auto;
             flex-grow: 1;
             font-family: 'Consolas', monospace;
-            font-size: 13px;
+            font-size: 12px;
         }
+        .close-logs { margin-bottom: 15px; background: #333; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold;}
 
-        .entry { margin-bottom: 8px; line-height: 1.4; border-bottom: 1px solid #222; padding-bottom: 4px; }
-        .time { color: #666; font-size: 11px; margin-right: 5px; }
+        .entry { margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #222; }
+        .time { color: #666; font-size: 10px; margin-right: 5px; }
         .act-tag { color: var(--action-color); }
         .res-tag { color: var(--response-color); }
 
         .player-card {
             background: linear-gradient(145deg, #1e1e1e, #121212);
-            border-radius: 16px;
-            padding: 20px;
+            border-radius: 20px;
+            padding: 25px;
             border: 1px solid #333;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            height: fit-content;
+            position: sticky;
+            top: 20px;
         }
 
-        .player-card.active .placeholder-fill { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-        .player-card.passive .placeholder-fill { background: var(--action-color); box-shadow: 0 0 8px var(--action-color); }
-        .player-card.stopped .placeholder-fill { background: #333;  box-shadow: none; }
-        
-        .player-card.active .btn-circle { background: var(--accent); }
-        .player-card.passive .btn-circle { background: var(--action-color); }
-        .player-card.stopped .btn-circle { background: #222; } 
+        .player-card.active .placeholder-fill { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+        .player-card.passive .placeholder-fill { background: var(--action-color); box-shadow: 0 0 10px var(--action-color); }
+        .player-card.active #player-status { color: var(--accent); }
+        .player-card.passive #player-status { color: var(--action-color); }
+        .player-card.stopped .placeholder-fill { background: #333; }
 
-        .queue-clouds {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            max-height: 300px;
-            overflow-y: auto;
-            width: 100%;
-            padding: 8px 0
-        }
-
-        .queue-item {
-            background: linear-gradient(145deg, #1e1e1e, #121212);
-            border: 1px solid #333;
-            color: var(--text);
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 13px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            animation: fadeIn 0.3s ease;
-            width: 100%;
-            box-shadow: 0px 4px 8px -4px rgba(0, 0, 0, 0.5);
-            margin: 0 2px
-        }
-
-        .queue-item.active {
-            box-shadow: 0px 3px 6px -4px var(--accent);
-        }
-        .queue-item.passive {
-            box-shadow: 0px 3px 6px -4px var(--action-color);
-        }
-        
-
-        .track-info { text-align: center; margin-bottom: 20px; width: 100%; }
-        #current-track { 
-            font-weight: bold; 
-            font-size: 14px; 
-            white-space: nowrap; 
+        .track-info { 
+            text-align: center; 
+            margin-bottom: 20px; 
+            width: 100%; 
             overflow: hidden; 
-            text-overflow: ellipsis; 
-            display: block;
-        }
-        #player-status { color: var(--accent); font-size: 12px; }
-
-        .progress-container { width: 100%; margin: 15px 0; }
-        .placeholder-bar {
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
             position: relative;
         }
-        .placeholder-fill {
-            position: absolute;
-            width: 0%;
-            height: 100%;
-            background: var(--accent);
-            border-radius: 2px;
-            box-shadow: 0 0 8px var(--accent);
-            transition: width 3s ease-out;
+        
+        .track-ticker-wrapper {
+            display: block;
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+            margin-top: 5px;
+            position: relative;
         }
 
-        .controls { display: flex; gap: 15px; align-items: center; }
-        .btn-circle {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            color: #555;
+        #current-track { 
+            font-weight: bold; 
+            font-size: 16px; 
+            display: inline-block;
+            padding-left: 0;
+            transition: transform 0.5s ease;
         }
-        .btn-circle .mdi {
-            font-size: 24px;
-            line-height: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+
+        #current-track.marquee {
+            padding-left: 100%;
+            animation: ticker 10s linear infinite;
+        }
+
+        @keyframes ticker {
+            0% { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(-100%, 0, 0); }
+        }
+
+        #player-status { font-size: 12px; text-transform: uppercase; font-weight: bold; }
+
+        .progress-container { width: 100%; margin: 20px 0; }
+        .placeholder-bar { height: 6px; background: #333; border-radius: 3px; position: relative; overflow: hidden; }
+        .placeholder-fill { position: absolute; width: 0%; height: 100%; transition: width 0.5s linear; }
+
+        .controls { display: flex; gap: 12px; justify-content: center; width: 100%; }
+        .btn-circle { 
+            width: 55px; height: 55px; border-radius: 50%; border: none; 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 25px; color: white; cursor: pointer; 
+            background: #2a2a2a; transition: 1s; 
+        }
+        
+        .player-card.active .btn-circle:not(:disabled) { color: var(--accent); }
+        .player-card.passive .btn-circle:not(:disabled) { color: var(--action-color); }
+        .btn-circle:hover:not(:disabled) { background: #444; transform: scale(1.05); }
+        .btn-circle:disabled { opacity: 0.2; cursor: default; }
+
+        .queue-clouds { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; width: 100%; overflow-y: auto; }
+        .queue-item { background: #1e1e1e; border: 1px solid #333; padding: 10px; border-radius: 10px; font-size: 13px; }
+        .queue-item.active { border-left: 4px solid var(--accent); }
+        .queue-item.passive { border-left: 4px solid var(--action-color); }
+
+        /* --- Dropdown --- */
+        .dropdown-wrapper { position: relative; display: flex; }
+        .dropdown-content { 
+            display: none; position: absolute; top: 110%; right: 0; 
+            background: var(--card-bg); border: 1px solid #333; 
+            border-radius: 8px; z-index: 100; min-width: 140px; 
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+        }
+        .dropdown-content button { width: 100%; padding: 12px; border-radius: 8px; text-align: left; background: none; color: white; border: none; cursor: pointer;}
+        .dropdown-content button:hover { background: #333; }
+        .show { display: block !important; }
+
+        /* --- Mobile Specifics --- */
+        .mobile-log-trigger {
+            display: none; position: fixed; bottom: 20px; right: 20px; 
+            z-index: 1000; width: 60px; height: 60px; border-radius: 50%;
+            background: var(--action-color); color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+
+        .logs-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-color); z-index: 2000; flex-direction: column; padding: 15px; box-sizing: border-box;
+        }
+        .logs-modal.active { display: flex; }
+
+        @media (max-width: 1024px) {
+            .main-grid { grid-template-columns: 1fr 1fr; }
+            .player-card-wrapper { grid-column: span 2; }
+            .player-card { position: static; }
+        }
+
+        @media (max-width: 600px) {
+            .header-panel {
+                flex-wrap: wrap;
+            }
+            #actionSelect {
+                flex: 1;
+            }
+            .split-container {
+                flex: 1;
+            }
+            .input-group {
+                width: 100%;
+                order: 3;
+            }
+            .main-grid { grid-template-columns: 1fr; }
+            .log-container.desktop-only { display: none; }
+            .mobile-log-trigger { display: flex; }
         }
     </style>
 </head>
@@ -264,65 +265,86 @@
             <option value="play">Play</option>
             <option value="playlist">Playlist</option>
         </select>
-        <input type="text" id="messageInput" placeholder="URL або назва треку...">
+
+        <div class="input-group">
+            <input type="text" id="messageInput" placeholder="URL або назва треку...">
+        </div>
+
         <div class="split-container">
-            <button id="sendBtn" class="send-btn main-action" onclick="sendInputMessage()">Додати</button>
+            <button id="sendBtn" class="send-btn main-action" onclick="sendInputMessage()" disabled>Додати</button>
             <div class="dropdown-wrapper">
-                <button class="send-btn arrow-toggle" onclick="toggleDropdown(event)">
-                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                <button id="arrowBtn" class="send-btn arrow-toggle" onclick="toggleDropdown(event)" disabled>
+                    <span class="mdi mdi-chevron-down"></span>
                 </button>
                 <div id="myDropdown" class="dropdown-content">
-                    <button id="dropDownBtn" class="send-btn" onclick="sendListMessage()">Локальне</button>
+                    <button onclick="sendListMessage()">Локальне</button>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="main-grid">
-        <div class="log-container">
+        <div class="log-container desktop-only">
             <div class="log-header" style="color: var(--action-color)">Actions Log</div>
             <div id="action-log" class="log-box"></div>
         </div>
 
-        <div class="log-container">
+        <div class="log-container desktop-only">
             <div class="log-header" style="color: var(--response-color)">Response Log</div>
             <div id="response-log" class="log-box"></div>
         </div>
-        <div>
-            <div class="player-card">
+
+        <div class="player-card-wrapper">
+            <div class="player-card stopped">
                 <div class="track-info">
                     <span id="player-status">Очікування...</span>
-                    <span id="current-track">Немає активного треку</span>
+                    <div class="track-ticker-wrapper">
+                        <span id="current-track">Немає активного треку</span>
+                    </div>
                 </div>
-    
+
                 <div class="progress-container">
                     <div class="placeholder-bar">
                         <div id="progressBarFill" class="placeholder-fill"></div>
                     </div>
                 </div>
-    
+
                 <div class="controls">
-                    <button id="stop-btn" class="btn-circle stopped" onclick="sendControl('stop')">
+                    <button class="btn-circle" title="Stop" onclick="sendControl('stop')" id="stop-btn" disabled>
                         <span class="mdi mdi-stop"></span>
                     </button>
-                    <button id="stop-btn" class="btn-circle stopped" onclick="sendControl('shuffle')">
+                    <button class="btn-circle" title="Shuffle" onclick="sendControl('shuffle')" id="shuffle-btn" disabled>
                         <span class="mdi mdi-shuffle-variant"></span>
                     </button>
-                    <button id="pause-btn" class="btn-circle stopped" id="playPauseBtn" onclick="sendControl('pause')">
+                    <button class="btn-circle" title="Pause" onclick="sendControl('pause')" id="pause-btn" disabled>
                         <span class="mdi mdi-play-pause"></span>
                     </button>
-                    <button id="next-btn" class="btn-circle stopped" onclick="sendControl('next')">
+                    <button class="btn-circle" title="Next" onclick="sendControl('next')" id="next-btn" disabled>
                         <span class="mdi mdi-skip-next"></span>
                     </button>
                 </div>
-    
-                <div style="margin-top: 15px; font-size: 11px; color: #555;">
+
+                <div style="margin-top: 20px; font-size: 11px; color: #666; width: 100%; text-align: center; border-top: 1px solid #222; padding-top: 10px;">
                     Queue: <span id="queue-count">0/0</span> | Passive: <span id="passive-count">0/0</span>
                 </div>
+
+                <div id="queue-cloud-container" class="queue-clouds"></div>
             </div>
-            <div id="queue-cloud-container" class="queue-clouds">
+        </div>
+    </div>
+
+    <button class="mobile-log-trigger send-btn" onclick="toggleMobileLogs()">
+        <span class="mdi mdi-text-box-outline" style="font-size: 24px;"></span>
+    </button>
+
+    <div id="logsModal" class="logs-modal">
+        <button class="close-logs" onclick="toggleMobileLogs()">Закрити логи</button>
+        <div style="display: flex; flex-direction: column; gap: 10px; height: 100%; overflow: hidden;">
+            <div class="log-container" style="height: 50%;">
+                <div id="action-log-mobile" class="log-box"></div>
+            </div>
+            <div class="log-container" style="height: 50%;">
+                <div id="response-log-mobile" class="log-box"></div>
             </div>
         </div>
     </div>
@@ -330,196 +352,132 @@
     <script>
         const actionLog = document.getElementById('action-log');
         const responseLog = document.getElementById('response-log');
+        const actionLogMob = document.getElementById('action-log-mobile');
+        const responseLogMob = document.getElementById('response-log-mobile');
         const input = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
-        const dropDownBtn = document.getElementById('dropDownBtn');
-
+        const arrowBtn = document.getElementById('arrowBtn');
         const progressBar = document.getElementById('progressBarFill');
+        const playerBtns = ['stop-btn', 'shuffle-btn', 'pause-btn', 'next-btn'].map(id => document.getElementById(id));
 
-        const stopBtn = document.getElementById('stop-btn')
-        const pauseBtn = document.getElementById('pause-btn')
-        const nextBtn = document.getElementById('next-btn')
-
-        stopBtn.disabled = true
-        pauseBtn.disabled = true
-        nextBtn.disabled = true
-        
-        sendBtn.disabled = true
-        dropDownBtn.disabled = true
         let socket;
 
         function connect() {
             socket = new WebSocket(`ws://${window.location.host}/ws`);
-
-            socket.onopen = () => {
-                addLog(responseLog, "З'єднання встановлено", "res-tag");
-                sendBtn.disabled = false;
-                dropDownBtn.disabled = false;
-
-                stopBtn.disabled = false;
-                pauseBtn.disabled = false;
-                nextBtn.disabled = false;
-            };
-
+            socket.onopen = () => { addLog(responseLog, responseLogMob, "З'єднання встановлено", "res-tag"); setUIState(true); };
             socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    console.debug(data)
                     handleServerData(data);
-                } catch (e) {
-                    addLog(responseLog, event.data, "res-tag");
-                }
+                } catch (e) { addLog(responseLog, responseLogMob, event.data, "res-tag"); }
             };
-
             socket.onclose = () => {
-                addLog(responseLog, "З'єднання розірвано. Перепідключення...", "res-tag");
-                sendBtn.disabled = true;
-                dropDownBtn.disabled = true
-
-                stopBtn.disabled = true
-                pauseBtn.disabled = true
-                nextBtn.disabled = true
-
-                progressBar.style.width = "0%";
-                updatePlayerUI({"Status": "Stopped"})
+                setUIState(false);
+                updatePlayerUI({status: "Stopped"});
                 setTimeout(connect, 3000);
             };
         }
 
-        function toggleDropdown(event) {
-            event.stopPropagation();
-            document.getElementById("myDropdown").classList.toggle("show");
+        function setUIState(enabled) {
+            sendBtn.disabled = !enabled;
+            arrowBtn.disabled = !enabled;
+            playerBtns.forEach(btn => btn.disabled = !enabled);
         }
 
-        function sendListMessage() {
-            sendCommand({ cmd: "localplaylist" });
-            document.getElementById("myDropdown").classList.remove("show");
-        }
-
-        window.onclick = function(event) {
-            if (!event.target.matches('.arrow-toggle')) {
-                const dropdown = document.getElementById("myDropdown");
-                if (dropdown.classList.contains('show')) {
-                    dropdown.classList.remove('show');
-                }
+        function handleServerData(data) {
+            if (data.type === "action") {
+                addLog(actionLog, actionLogMob, `${data.action} -> ${data.status || 'N/A'}`, "act-tag");
+                if (["Next", "Stop/End", "init"].includes(data.action)) progressBar.style.width = "0%";
+            } 
+            else if (data.type === "response") {
+                addLog(responseLog, responseLogMob, `Status: ${data.status} | Mode: ${data.mode}`, "res-tag");
+            } 
+            else if (data.type === "process") {
+                if (data.percent !== undefined) progressBar.style.width = data.percent + "%";
+                return;
             }
+            updatePlayerUI(data);
         }
 
         function updatePlayerUI(data) {
             const isStopped = data.status === "Stopped";
-
             const playerCard = document.querySelector('.player-card');
+            playerCard.className = `player-card ${isStopped ? 'stopped' : (data.mode || 'stopped')}`;
             
-            let currentState = 'stopped';
-            
-            if (!isStopped) {
-                currentState = data.mode
-                stopBtn.disabled = false;
-                pauseBtn.disabled = false;
-                nextBtn.disabled = false;
+            if (isStopped) {
+                playerBtns.forEach(btn => btn.disabled = true);
+                progressBar.style.width = "0%";
+            } else {
+                playerBtns.forEach(btn => btn.disabled = false);
             }
-        
-            playerCard.classList.remove('active', 'passive', 'stopped');
-            playerCard.classList.add(currentState);
 
-            document.getElementById('queue-count').innerText = isStopped ? '0/0' : `${(data.active_size || 0) > 0 ? data.active_index + 1 : 0}/${data.active_size || 0}`;
-            document.getElementById('passive-count').innerText = isStopped ? '0/0' : `${(data.passive_size || 0) > 0 ? data.passive_index + 1 : 0}/${data.passive_size || 0}`;
-            document.getElementById('player-status').innerText = isStopped ? "Очікування..." : (data.status || "---");
+            document.getElementById('queue-count').innerText = isStopped ? '0/0' : `${(data.active_size > 0 ? data.active_index + 1 : 0)}/${data.active_size || 0}`;
+            document.getElementById('passive-count').innerText = isStopped ? '0/0' : `${(data.passive_size > 0 ? data.passive_index + 1 : 0)}/${data.passive_size || 0}`;
+            document.getElementById('player-status').innerText = isStopped ? "Очікування..." : (data.status || "Грає");
+            
+            const trackEl = document.getElementById('current-track');
+            const newTitle = !isStopped && data.metadata?.title ? data.metadata.title : "Немає активного треку";
+            
+            trackEl.classList.remove('marquee');
+            trackEl.innerText = newTitle;
 
-            const trackTitle = !isStopped && data.metadata?.title ? data.metadata.title : "Немає активного треку";
-            document.getElementById('current-track').innerText = trackTitle;
+            if (!isStopped && trackEl.scrollWidth > trackEl.parentElement.clientWidth) {
+                const duration = Math.max(8, trackEl.scrollWidth / 30); 
+                trackEl.style.animationDuration = `${duration}s`;
+                trackEl.classList.add('marquee');
+            }
 
             const cloudContainer = document.getElementById('queue-cloud-container');
-            cloudContainer.innerHTML = ''; 
-        
-            if (!isStopped && data.queue && Array.isArray(data.queue)) {
-                data.queue.forEach((track, index) => {
-                    const span = document.createElement('span');
-                    span.className = 'queue-item';
-                    
-                    const titleDiv = document.createElement('div');
-                    titleDiv.className = 'track-title';
-                    titleDiv.innerText = track.title || "Unknown Track";
-                    
-                    const artistDiv = document.createElement('div');
-                    artistDiv.className = 'track-artist';
-                    artistDiv.innerText = track.artist || "Unknown Artist";
-                    
-                    span.appendChild(titleDiv);
-                    span.appendChild(artistDiv);
-                    span.classList.add(track.type === "active" ? "active" : "passive")
-                    
-                    cloudContainer.appendChild(span);
+            cloudContainer.innerHTML = '';
+            if (!isStopped && data.queue) {
+                data.queue.forEach(track => {
+                    const div = document.createElement('div');
+                    div.className = `queue-item ${track.type}`;
+                    div.innerHTML = `<div class="track-title"><b>${track.title || "Unknown"}</b></div>
+                                     <div class="track-artist">${track.artist || "Unknown Artist"}</div>`;
+                    cloudContainer.appendChild(div);
                 });
             }
         }
-        
-        function handleServerData(data) {
-            if (data.type === "action") {
-                addLog(actionLog, `${data.action} -> ${data.status || 'N/A'}`, "act-tag");
-                if (data.action === "Next" || data.action === "Stop/End" || data.action === "init") {
 
-                    progressBar.style.width = "0%";
-
+        function addLog(deskContainer, mobContainer, text, className) {
+            const now = new Date().toLocaleTimeString();
+            const content = `<div class="entry"><span class="time">[${now}]</span><span class="${className}">${text}</span></div>`;
+            [deskContainer, mobContainer].forEach(c => {
+                if(c) {
+                    c.insertAdjacentHTML('beforeend', content);
+                    c.scrollTop = c.scrollHeight;
                 }
-                if (data.status === "Stopped" || data.action === "Stop/End") {
-                    stopBtn.disabled = true
-                    pauseBtn.disabled = true
-                    nextBtn.disabled = true
-                } 
-            } else if (data.type === "response") {
-                addLog(responseLog, `Status: ${data.status} | Mode: ${data.mode}`, "res-tag");
-                if (data.action === "next" || data.action === "stop") {
-                    progressBar.style.width = "0%";
-                }
-                if (data.status === "Stopped") {
-                    stopBtn.disabled = true
-                    pauseBtn.disabled = true
-                    nextBtn.disabled = true
-                }
-            } else if (data.type === "process") {
-        
-                if (progressBar && data.percent !== undefined) {
-                    const width = Math.min(Math.max(data.percent, 0), 100);
-                    progressBar.style.width = width + "%";
-                }
-                return
-            } else if (data.type === "debug") {
-                return
-            }
-        
-            updatePlayerUI(data);
+            });
         }
+
+        function toggleMobileLogs() { document.getElementById('logsModal').classList.toggle('active'); }
+        function toggleDropdown(e) { e.stopPropagation(); document.getElementById("myDropdown").classList.toggle("show"); }
+        window.onclick = () => document.getElementById("myDropdown").classList.remove("show");
 
         function sendInputMessage() {
             const cmd = document.getElementById('actionSelect').value;
-            const url = input.value;
-            if (url) {
-                sendCommand({ cmd: cmd, url: url });
+            if (input.value.trim()) {
+                sendCommand({ cmd, url: input.value });
                 input.value = '';
             }
         }
 
-        function sendControl(actionName) {
-            sendCommand({ cmd: "control", action: actionName });
-        }
+        function sendControl(action) { sendCommand({ cmd: "control", action }); }
+        function sendListMessage() { sendCommand({ cmd: "localplaylist" }); }
+        function sendCommand(obj) { if (socket?.readyState === 1) socket.send(JSON.stringify(obj)); }
 
-        function sendCommand(obj) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify(obj));
+        input.onkeypress = (e) => { if (e.key === "Enter") sendInputMessage(); };
+        
+        window.onresize = () => {
+            const trackEl = document.getElementById('current-track');
+            if (trackEl.innerText !== "Немає активного треку" && trackEl.innerText !== "З'єднання встановлено") {
+                trackEl.classList.remove('marquee');
+                if (trackEl.scrollWidth > trackEl.parentElement.clientWidth) {
+                    trackEl.classList.add('marquee');
+                }
             }
-        }
-
-        function addLog(container, text, className) {
-            const div = document.createElement('div');
-            div.className = 'entry';
-            const now = new Date().toLocaleTimeString();
-            div.innerHTML = `<span class="time">[${now}]</span><span class="${className}">${text}</span>`;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        input.addEventListener("keypress", (e) => { if (e.key === "Enter") sendInputMessage(); });
+        };
 
         connect();
     </script>
