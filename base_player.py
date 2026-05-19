@@ -8,6 +8,7 @@ import utils
 from itertools import islice
 import asyncio
 import random
+import shutil
 
 
 class BasePlayer(ABC):
@@ -29,6 +30,12 @@ class BasePlayer(ABC):
 
         self.queue_list = []
 
+        exists = shutil.which("mpv")
+        if not exists:
+            raise OSError("mpv is not found in system and/or in PATH")
+        else:
+            print(f"found mpv: {exists}")
+        self.mpv_wrapper = exists
     async def broadcast_state(
         self,
         action_name,
@@ -106,10 +113,11 @@ class BasePlayer(ABC):
         cleanup_socket(self.socket)
         self.proc = subprocess.Popen(
             [
-                "mpv",
+                self.mpv_wrapper,
                 "--no-video",
                 f"--input-ipc-server={self.socket}",
                 "--volume=50",
+                "--msg-level=all=no",
                 url,
             ]
         )

@@ -26,7 +26,8 @@ GLib.Variant = lambda t, v: MagicMock(unpack=lambda: v)
 import server
 from mpris_player import MPRISPlayer
 from smtc_player import SMTCPlayer
-
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 # --- Допоміжні класи ---
 
 
@@ -146,6 +147,25 @@ async def test_player_pause(player):
     assert player.PlaybackStatus == "Playing"
     player.mpv.send.assert_called()
 
+@pytest.mark.asyncio
+async def test_ws_playpause(player, ws_manager):
+    
+    player.active_queue = ["http://fakeurl.com"]
+    player.active_index = 0
+    player.mode = "active"
+    player.PlaybackStatus = "Playing"
+
+    await ws_manager.ws.send_json({"cmd": "control", "action": "pause"})
+
+    resp = await ws_manager.wait_for_type("response")
+    assert resp["type"] == "response"
+    assert resp["status"] == "Paused"
+
+    await ws_manager.ws.send_json({"cmd": "control", "action": "pause"})
+
+    resp = await ws_manager.wait_for_type("response")
+    assert resp["type"] == "response"
+    assert resp["status"] == "Playing"
 
 @pytest.mark.asyncio
 async def test_player_stop_clears_everything(player):

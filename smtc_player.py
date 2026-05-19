@@ -37,10 +37,10 @@ class SMTCPlayer(BasePlayer):
             asyncio.run_coroutine_threadsafe(self.async_next(), self.loop)
 
     def set_meta(self, title, artist):
-        if isinstance(artist, list):
-            artist = artist[0]
+        if not isinstance(artist, list):
+            artist = [artist]
         self.Metadata["title"] = title
-        self.Metadata["artist"] = [artist]
+        self.Metadata["artist"] = artist
 
     def get_meta(self):
         return {
@@ -51,9 +51,9 @@ class SMTCPlayer(BasePlayer):
     def update_widget(self, meta=None, **kw):
         self.set_meta(meta["title"], meta["artist"])
         updater = self.smtc.display_updater
-        # metadata = meta or self.get_meta()
-        updater.music_properties.title = meta["title"]
-        updater.music_properties.artist = meta["artist"]
+        metadata = self.get_meta()
+        updater.music_properties.title = metadata["title"]
+        updater.music_properties.artist = ", ".join(metadata["artist"])
         updater.update()
 
         status_map = {

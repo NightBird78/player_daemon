@@ -10,10 +10,11 @@ async def poll_proc(player):
         if not player.proc:
             continue
         if player.proc.poll() is None:
+            res = player.mpv.get_property("percent-pos")
             await ws_broadcast(
                 {
                     "type": "process",
-                    "percent": player.mpv.get_property("percent-pos"),
+                    "percent": res,
                 }
             )
             continue
