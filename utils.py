@@ -6,6 +6,49 @@ import time
 from yt_dlp import YoutubeDL
 
 
+async def search(text):
+    """шукає перші 5 результатів за текстом та повертає дані разом із прев'ю"""
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "extract_flat": True,
+        "quiet": True,
+    }
+
+    def find():
+        with YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(f"ytsearch5:{text}", download=False)
+
+                if not info or "entries" not in info:
+                    return []
+
+                results = []
+                for entry in info["entries"]:
+                    thumbnail = entry.get("thumbnail")
+                    if not thumbnail and entry.get("thumbnails"):
+                        thumbnail = entry["thumbnails"][-1].get("url")
+
+                    results.append(
+                        {
+                            "title": entry.get("title"),
+                            "url": entry.get("url")
+                            if entry.get("url")
+                            else f"https://www.youtube.com/watch?v={entry.get('id')}",
+                            "duration": entry.get("duration"),
+                            "thumbnail": thumbnail,
+                        }
+                    )
+
+                return results
+
+            except Exception as e:
+                print(f"Помилка пошуку: {e}")
+                return []
+
+    return await asyncio.to_thread(find)
+
+
 async def is_playlist(url):
     """Перевіряє, чи є посилання плейлистом, без важких операцій"""
     ydl_opts = {

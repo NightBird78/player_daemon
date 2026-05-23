@@ -45,6 +45,7 @@
 
         .input-group {
             flex-grow: 1;
+            position: relative;
         }
 
         .split-container {
@@ -209,15 +210,84 @@
 
         /* --- Dropdown --- */
         .dropdown-wrapper { position: relative; display: flex; }
-        .dropdown-content { 
-            display: none; position: absolute; top: 110%; right: 0; 
-            background: var(--card-bg); border: 1px solid #333; 
-            border-radius: 8px; z-index: 100; min-width: 140px; 
+        .dropdown-content {
+            position: absolute;
+            top: 110%;
+            right: 0; 
+            background: var(--card-bg);
+            border: 1px solid #333; 
+            border-radius: 8px;
+            z-index: 100;
+            min-width: 140px; 
             box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+
+            opacity: 0;
+            transform: translateY(-5px);
+            pointer-events: none;
+            
+            transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .dropdown-content button { width: 100%; padding: 12px; border-radius: 8px; text-align: left; background: none; color: white; border: none; cursor: pointer;}
         .dropdown-content button:hover { background: #333; }
+        .dropdown-content.show { 
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
         .show { display: block !important; }
+
+        /* --- Search Results Dropdown --- */
+        .search-results-dropdown {
+            position: absolute;
+            top: 110%;
+            left: 0;
+            width: 100%;
+            background: var(--card-bg);
+            border: 1px solid #333;
+            border-radius: 8px;
+            z-index: 150;
+            max-height: 320px;
+            overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            display: none;
+        }
+        .search-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #222;
+            transition: background 0.2s;
+        }
+        .search-item:last-child { border-bottom: none; }
+        .search-item:hover { background: #252525; }
+        .search-thumb {
+            width: 50px;
+            height: 38px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #333;
+        }
+        .search-info {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        .search-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .search-duration {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 2px;
+        }
 
         /* --- Mobile Specifics --- */
         .mobile-log-trigger {
@@ -268,15 +338,18 @@
 
         <div class="input-group">
             <input type="text" id="messageInput" placeholder="URL або назва треку...">
+            <div id="searchResults" class="search-results-dropdown"></div>
         </div>
 
         <div class="split-container">
-            <button id="sendBtn" class="send-btn main-action" onclick="sendInputMessage()" disabled>Додати</button>
+            <button id="sendBtn" class="send-btn main-action" onclick="searchInputMessage()" disabled>Шукати</button>
             <div class="dropdown-wrapper">
                 <button id="arrowBtn" class="send-btn arrow-toggle" onclick="toggleDropdown(event)" disabled>
                     <span class="mdi mdi-chevron-down"></span>
                 </button>
-                <div id="myDropdown" class="dropdown-content">
+                
+                <div id="dropdown-elements" class="dropdown-content">
+                    <button onclick="sendInputMessage()">Додати</button>
                     <button onclick="sendListMessage()">Локальне</button>
                 </div>
             </div>
@@ -358,30 +431,91 @@
         const sendBtn = document.getElementById('sendBtn');
         const arrowBtn = document.getElementById('arrowBtn');
         const progressBar = document.getElementById('progressBarFill');
+        const searchResults = document.getElementById('searchResults');
         const playerBtns = ['stop-btn', 'shuffle-btn', 'pause-btn', 'next-btn'].map(id => document.getElementById(id));
 
         let socket;
+        let reconnectTimeout = null;
+        let connectionTimeout = null;
 
         function connect() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+    
+            if (connectionTimeout) {
+                clearTimeout(connectionTimeout);
+                connectionTimeout = null;
+            }
+
+            if (socket) {
+                socket.onopen = null;
+                socket.onmessage = null;
+                socket.onclose = null;
+                socket.onerror = null;
+                try { socket.close(); } catch(e) {}
+            }
+
             socket = new WebSocket(`ws://${window.location.host}/ws`);
-            socket.onopen = () => { addLog(responseLog, responseLogMob, "З'єднання встановлено", "res-tag"); setUIState(true); };
+
+            connectionTimeout = setTimeout(() => {
+                if (socket && socket.readyState !== WebSocket.OPEN) {
+                    console.log("З'єднання триває занадто довго. Примусове закриття...");
+                    socket.onclose = null; 
+                    try { socket.close(); } catch(e) {}
+            
+                handleCloseActions();
+                }
+            }, 1000);
+
+            socket.onopen = () => {
+                if (connectionTimeout) clearTimeout(connectionTimeout);
+                addLog(responseLog, responseLogMob, "З'єднання встановлено", "res-tag"); 
+                setUIState(true); 
+            };
+
             socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
                     handleServerData(data);
                 } catch (e) { addLog(responseLog, responseLogMob, event.data, "res-tag"); }
             };
+
             socket.onclose = () => {
-                setUIState(false);
-                updatePlayerUI({status: "Stopped"});
-                setTimeout(connect, 3000);
+                handleCloseActions();
             };
+    
+            socket.onerror = (error) => {
+                console.error("Помилка WebSocket:", error);
+            };
+        }
+
+        function handleCloseActions() {
+            if (connectionTimeout) {
+                clearTimeout(connectionTimeout);
+                connectionTimeout = null;
+            }
+
+            setUIState(false);
+            updatePlayerUI({status: "Stopped"});
+    
+            if (!reconnectTimeout) {
+                reconnectTimeout = setTimeout(() => { connect(); }, 5000);
+            }
         }
 
         function setUIState(enabled) {
             sendBtn.disabled = !enabled;
             arrowBtn.disabled = !enabled;
             playerBtns.forEach(btn => btn.disabled = !enabled);
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds || isNaN(seconds)) return "0:00";
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
         }
 
         function handleServerData(data) {
@@ -395,6 +529,33 @@
             else if (data.type === "process") {
                 if (data.percent !== undefined) progressBar.style.width = data.percent + "%";
                 return;
+            }
+            else if (data.type === "search_result") {
+                addLog(responseLog, responseLogMob, `search result`, "res-tag");
+                
+                searchResults.innerHTML = '';
+                if (data.search_result && data.search_result.length > 0) {
+                    data.search_result.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'search-item';
+                        div.innerHTML = `
+                            <img class="search-thumb" src="${item.thumbnail || ''}" alt="thumb">
+                            <div class="search-info">
+                                <div class="search-title" title="${item.title}">${item.title}</div>
+                                <div class="search-duration">${formatDuration(item.duration)}</div>
+                            </div>
+                        `;
+                        div.onclick = (e) => {
+                            e.stopPropagation();
+                            sendCommand({ cmd: "play", url: item.url });
+                            searchResults.style.display = 'none';
+                        };
+                        searchResults.appendChild(div);
+                    });
+                    searchResults.style.display = 'block';
+                } else {
+                    searchResults.style.display = 'none';
+                }
             }
             updatePlayerUI(data);
         }
@@ -452,8 +613,15 @@
         }
 
         function toggleMobileLogs() { document.getElementById('logsModal').classList.toggle('active'); }
-        function toggleDropdown(e) { e.stopPropagation(); document.getElementById("myDropdown").classList.toggle("show"); }
-        window.onclick = () => document.getElementById("myDropdown").classList.remove("show");
+        function toggleDropdown(e) {
+            e.stopPropagation();
+            document.getElementById("dropdown-elements").classList.toggle("show");
+        }
+        
+        window.onclick = () => {
+            document.getElementById("dropdown-elements").classList.remove("show");
+            searchResults.style.display = 'none';
+        }
 
         function sendInputMessage() {
             const cmd = document.getElementById('actionSelect').value;
@@ -462,12 +630,18 @@
                 input.value = '';
             }
         }
+        function searchInputMessage() {
+            if (input.value.trim()) {
+                sendCommand({ cmd: "search", text: input.value });
+                input.value = '';
+            }
+        }
 
         function sendControl(action) { sendCommand({ cmd: "control", action }); }
         function sendListMessage() { sendCommand({ cmd: "localplaylist" }); }
         function sendCommand(obj) { if (socket?.readyState === 1) socket.send(JSON.stringify(obj)); }
 
-        input.onkeypress = (e) => { if (e.key === "Enter") sendInputMessage(); };
+        input.onkeypress = (e) => { if (e.key === "Enter") searchInputMessage(); };
         
         window.onresize = () => {
             const trackEl = document.getElementById('current-track');

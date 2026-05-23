@@ -9,6 +9,9 @@ from itertools import islice
 import asyncio
 import random
 import shutil
+import os
+import yt_dlp
+from pathlib import Path
 
 
 class BasePlayer(ABC):
@@ -30,12 +33,23 @@ class BasePlayer(ABC):
 
         self.queue_list = []
 
-        exists = shutil.which("mpv")
-        if not exists:
+        exists_mpv = shutil.which("mpv")
+        if not exists_mpv:
             raise OSError("mpv is not found in system and/or in PATH")
         else:
-            print(f"found mpv: {exists}")
-        self.mpv_wrapper = exists
+            print(f"found mpv:        {exists_mpv}")
+        self.mpv_wrapper = exists_mpv
+
+        exists_dlp = shutil.which("yt-dlp")
+
+        if not exists_dlp:
+            exists_dlp = self.find_ytdlp()
+            dlp = Path(exists_dlp)
+            if not dlp.exists():
+                raise OSError("yt-dlp is not found in system and/or in PATH")
+        print(f"found youtube-dl: {exists_dlp}")
+        self.yt_dlp_path = exists_dlp
+
     async def broadcast_state(
         self,
         action_name,
@@ -109,11 +123,20 @@ class BasePlayer(ABC):
             if errors:
                 asyncio.create_task(self._update_queue())
 
+    @staticmethod
+    def find_ytdlp():
+        module_path = yt_dlp.__file__
+        site_packages_dir = os.path.dirname(os.path.dirname(module_path))
+        scripts_dir = os.path.join(os.path.dirname(site_packages_dir), "Scripts")
+        exe_path = os.path.join(scripts_dir, "youtube-dl")
+        return exe_path
+
     def init_mpv(self, url):
         cleanup_socket(self.socket)
         self.proc = subprocess.Popen(
             [
                 self.mpv_wrapper,
+                f"--script-opts=ytdl_hook-ytdl_path={self.yt_dlp_path}",
                 "--no-video",
                 f"--input-ipc-server={self.socket}",
                 "--volume=50",
@@ -243,7 +266,7 @@ class BasePlayer(ABC):
             await self.async_play_pause(broadcast=False)
             self.update_widget(meta=meta, additional={"CanGoNext": True})
         except Exception as e:
-            print(f"an error in play_current {e}")
+            print(f"an error in play_current {e}", e.__cause__)
 
     async def async_next(self, *, broadcast=True, ws_client=None, count=1):
         local_count = max(1, count)

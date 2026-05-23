@@ -64,3 +64,7 @@ class SMTCPlayer(BasePlayer):
         self.smtc.playback_status = status_map.get(
             self.PlaybackStatus, MediaPlaybackStatus.CLOSED
         )
+
+    @property
+    def mpv_download_url(self) -> str:
+        return "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-05-22-db73857997/mpv-x86_64-20260522-git-db73857997.7z"

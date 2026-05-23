@@ -103,6 +103,17 @@ async def websocket_handler(request):
                 elif data["action"] == "shuffle":
                     await player.async_shuffle(ws_client=ws)
                     continue
+            elif cmd == "search":
+                resp = await utils.search(data["text"])
+
+                await send_data(
+                    ws,
+                    player,
+                    "search_result",
+                    additional={"search_result": resp},
+                    _only=True,
+                )
+                continue
             await send_data(
                 ws,
                 player,
