@@ -14,6 +14,8 @@
             --text: #e0e0e0;
             --response-color: #4caf50;
             --panel-bg: #252525;
+            --warning: #ffb74d;
+            --error: #cf6679;
         }
 
         body {
@@ -130,6 +132,7 @@
         .time { color: #666; font-size: 10px; margin-right: 5px; }
         .act-tag { color: var(--action-color); }
         .res-tag { color: var(--response-color); }
+        .warn-tag { color: var(--warning); }
 
         .player-card {
             background: linear-gradient(145deg, #1e1e1e, #121212);
@@ -613,6 +616,9 @@
                 if (data.percent !== undefined) progressBar.style.width = data.percent + "%";
                 return;
             }
+            else if (data.type === "warning") {
+                addLog(responseLog, responseLogMob, data.warning, "warn-tag");
+            }
             else if (data.type === "search_result") {
                 addLog(responseLog, responseLogMob, `search result`, "res-tag");
                 
@@ -719,28 +725,28 @@
             const safeUrl = escapeHtml(trackUrl);
         
             if (!isFirst) {
-                buttons.push(`<button class="action-next" data-action="next" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">Відтворити наступним</button>`);
+                buttons.push(`<button class="action-next" data-action="next" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Відтворити наступним</button>`);
             }
         
             const canMoveUp = !isFirst && !isSecond && !(isPassive && prevTrack && prevTrack.type === 'active');
             if (canMoveUp) {
-                buttons.push(`<button data-action="move_up" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">Перемістити вище</button>`);
+                buttons.push(`<button data-action="move_up" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Перемістити вище</button>`);
             }
         
             const canMoveDown = !isLast && !(!isPassive && nextTrack && nextTrack.type === 'passive');
             if (canMoveDown) {
-                buttons.push(`<button data-action="move_down" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">Перемістити нижче</button>`);
+                buttons.push(`<button data-action="move_down" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Перемістити нижче</button>`);
             }
         
             const actionType = isPassive ? 'to_active' : 'to_passive';
             const labelType = isPassive ? 'В активні' : 'В пасивні';
-            buttons.push(`<button data-action="${actionType}" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">${labelType}</button>`);
+            buttons.push(`<button data-action="${actionType}" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">${labelType}</button>`);
         
             if (isPassive) {
-                buttons.push(`<button data-action="postpone" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">Відкласти</button>`);
+                buttons.push(`<button data-action="postpone" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Відкласти</button>`);
             }
         
-            buttons.push(`<button data-action="remove" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)" style="color: #ff5252;">Прибрати</button>`);
+            buttons.push(`<button data-action="remove" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)" style="color: #ff5252;">Прибрати</button>`);
         
             if (buttons.length > 0) {
                 buttons[0] = buttons[0].replace('<button', '<button style="border-radius: 8px 8px 0 0;"');
@@ -819,10 +825,23 @@
             }
         }
 
-        function sendTrackAction(action, trackId) {
+        function sendTrackAction(action, trackId, type) {
+            if (action === "remove") {
+                const openMenu = document.getElementById(`item-menu-${trackId}`);
+                console.log(openMenu)
+                if (openMenu) {
+                    const queueItem = openMenu.closest('.queue-item');
+                    if (queueItem) {
+                        queueItem.remove();
+                        
+                        const queueCountEl = document.getElementById('queue-count');
+                    }
+                }
+            }
             sendCommand({
                 cmd: "queue_action",
                 action: action,
+                in: type,
                 track_id: trackId
             });
             document.querySelectorAll('.item-dropdown').forEach(menu => menu.classList.remove('show'));

@@ -24,8 +24,6 @@ class BasePlayer(ABC):
         self.PlaybackStatus = "Stopped"
         self.Metadata = {"title": "wait for", "artist": ["queue"]}
 
-        self.queue_list = []
-
         exists_mpv = shutil.which("mpv")
         if not exists_mpv:
             raise OSError("mpv is not found in system and/or in PATH")
@@ -64,7 +62,7 @@ class BasePlayer(ABC):
                     "passive_size": len(self.queue.passive_queue),
                     "passive_index": self.queue.passive_index,
                     "metadata": self.get_meta(),
-                    "queue": self.queue_list,
+                    "queue": self.queue.queue_list,
                 }
                 | additional,
                 ws_client,
@@ -75,21 +73,21 @@ class BasePlayer(ABC):
 
     async def _update_queue(self):
         async with self.lock:
-            self.queue_list.clear()
+            self.queue.queue_list.clear()
 
             queue_list_temp = self.queue.get_next_slots(NEXT_QUEUE_LEN)
 
             errors = False
-            for q, v in queue_list_temp.items():
-                meta = await utils.fetch_metadata(q)
+            for e in queue_list_temp:
+                meta = await utils.fetch_metadata(e["url"])
                 if meta is None:
                     errors = True
-                    self.queue.remove_corrupted_url(q)
-                    print(f"WARN: Found error-link {q}")
+                    self.queue.remove_corrupted_url(e["url"])
+                    print(f"WARN: Found error-link {e['url']}")
                     continue
-                self.queue_list.append({"url": q, "type": v} | meta)
+                self.queue.queue_list.append(e | meta)
 
-            if len(self.queue_list) > 0:
+            if len(self.queue.queue_list) > 0:
                 await self.broadcast_state("queue", type="update")
             if errors:
                 asyncio.create_task(self._update_queue())
@@ -110,8 +108,8 @@ class BasePlayer(ABC):
                 f"--script-opts=ytdl_hook-ytdl_path={self.yt_dlp_path}",
                 "--no-video",
                 f"--input-ipc-server={self.socket}",
-                "--idle=yes",
                 "--volume=50",
+                "--idle=yes",
                 "--msg-level=all=no",
                 url,
             ]
@@ -146,8 +144,10 @@ class BasePlayer(ABC):
             await asyncio.sleep(0.05)
 
         print("MPV успішно піднято IPC-сервер! Підключення...")
-
-        await self.mpv.connect()
+        try:
+            await self.mpv.connect()
+        except Exception as e:
+            print("error while 'await self.mpv.connect()'", e)
 
     def get_current_url(self):
         return self.queue.get_current_url()
@@ -181,7 +181,7 @@ class BasePlayer(ABC):
             await self.async_play_pause(broadcast=False)
 
         self.queue.shuffle_passive()
-        self.queue_list.clear()
+        self.queue.queue_list.clear()
 
         if not is_active:
             await self.async_next(broadcast=False)
@@ -238,7 +238,7 @@ class BasePlayer(ABC):
             await self.play_current()
 
             try:
-                self.queue_list = self.queue_list[max(1, count) :]
+                self.queue.queue_list = self.queue.queue_list[max(1, count) :]
             except Exception:
                 pass
 
@@ -255,7 +255,7 @@ class BasePlayer(ABC):
 
     async def async_stop(self, *, ws_client=None, broadcast=True):
         try:
-            await self.mpv.send({"command": ["quit"]})
+            await self.mpv.send({"command": ["stop"]})
         except Exception:
             pass
 

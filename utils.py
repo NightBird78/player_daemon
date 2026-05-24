@@ -4,6 +4,8 @@ import asyncio
 import os
 import time
 from yt_dlp import YoutubeDL
+import subprocess
+import concurrent.futures
 
 
 async def search(text):
@@ -62,15 +64,22 @@ async def is_playlist(url):
         with YoutubeDL(ydl_opts) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
-                return info.get("_type") == "playlist" or "entries" in info
+                return (
+                    info.get("_type") == "playlist"
+                    or "entries" in info
+                    or "playlist?list=" in info.get("url")
+                )
             except Exception:
                 return False
 
     return await asyncio.to_thread(check)
 
 
-async def stream_links_async(url):
-    """Асинхронно видає посилання з плейлиста по одному"""
+def sync_worker(url, queue, loop):
+    """
+    Працює в окремому потоці. Потоково читає stdout yt-dlp
+    і безпечно перекидає рядки в асинхронну чергу.
+    """
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
@@ -85,22 +94,40 @@ async def stream_links_async(url):
         url,
     ]
 
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=env,
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=env
     )
 
-    while True:
-        line = await process.stdout.readline()
-        if not line:
-            break
-        link = line.decode().strip()
+    for line in process.stdout:
+        link = line.strip()
         if link:
-            yield link
+            loop.call_soon_threadsafe(queue.put_nowait, link)
 
-    await process.wait()
+    process.wait()
+    loop.call_soon_threadsafe(queue.put_nowait, None)
+
+
+async def stream_links_async(url):
+    """
+    Справжній асинхронний генератор.
+    Видає лінки одразу, як тільки yt-dlp виплюне їх у stdout.
+    """
+    loop = asyncio.get_running_loop()
+    queue = asyncio.Queue()
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    loop.run_in_executor(executor, sync_worker, url, queue, loop)
+
+    try:
+        while True:
+            link = await queue.get()
+
+            if link is None:
+                break
+
+            yield link
+    finally:
+        executor.shutdown(wait=False)
 
 
 cache = {}

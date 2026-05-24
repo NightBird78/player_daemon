@@ -1,5 +1,3 @@
-import asyncio
-
 from server import start_server, ws_broadcast
 from player import create_player
 

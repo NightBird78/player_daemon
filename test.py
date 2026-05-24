@@ -1,9 +1,12 @@
 import sys
 import asyncio
 import pytest
+from hypothesis import given, strategies as st
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from aiohttp import web
+
+from queue_manager import QueueManager
 
 # --- Системні моки (повинні бути до імпорту локальних модулів) ---
 mock_modules = [
@@ -383,3 +386,73 @@ async def test_ws_shuffle_passive_switch_active(mock_shuffle, player, ws_manager
     assert list(player.queue.passive_queue) == expected_result
 
     mock_shuffle.assert_called_once()
+
+
+# ===== test queue actions =====
+unique_tracks_strategy = st.lists(
+    st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=5),
+    min_size=1,
+    max_size=7,
+    unique=True,
+)
+
+
+@given(
+    tracks=unique_tracks_strategy,
+    direction=st.sampled_from(["up", "down"]),
+    target_pos=st.integers(min_value=0, max_value=20),
+)
+def test_hypothesis_move_action(tracks, direction, target_pos):
+    qm = QueueManager()
+    qm.active_queue = tracks.copy()
+
+    if target_pos >= len(tracks):
+        target_pos = len(tracks) - 1
+
+    target_track = tracks[target_pos]
+
+    qm.active_index = -1
+
+    res, cause = qm.move(target_track, _to=direction, _in="active")
+
+    if direction == "up" and target_pos == 0:
+        assert res is False
+        assert cause == "Element is already at the top"
+        assert qm.active_queue == tracks
+
+    elif direction == "down" and target_pos == len(tracks) - 1:
+        assert res is False
+        assert cause == "Element is already at the bottom"
+        assert qm.active_queue == tracks
+
+    else:
+        assert res is True
+        assert cause is None
+
+        assert len(qm.active_queue) == len(tracks)
+        assert set(qm.active_queue) == set(tracks)
+
+        new_pos = qm.active_queue.index(target_track)
+
+        if direction == "up":
+            assert new_pos == target_pos - 1
+            assert qm.active_queue[target_pos] == tracks[target_pos - 1]
+
+        elif direction == "down":
+            assert new_pos == target_pos + 1
+            assert qm.active_queue[target_pos] == tracks[target_pos + 1]
+
+
+@given(tracks=unique_tracks_strategy)
+def test_move_track_not_found(tracks):
+    qm = QueueManager()
+    qm.active_queue = tracks.copy()
+    qm.active_index = -1
+
+    fake_track = "NOT_EXIST"
+
+    res, cause = qm.move(fake_track, _to="up", _in="active")
+
+    assert res is False
+    assert cause == "no this element in active"
+    assert qm.active_queue == tracks

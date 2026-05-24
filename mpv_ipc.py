@@ -27,8 +27,8 @@ class MPV:
             self.reader, self.writer = await asyncio.open_unix_connection(
                 self.socket_path
             )
-
         self.reader_task = asyncio.create_task(self._reader_loop())
+
         await self.send({"command": ["observe_property", 1, "percent-pos"]})
 
     async def _reader_loop(self):
@@ -40,11 +40,9 @@ class MPV:
                 line = line_bytes.decode("utf-8").strip()
                 if not line:
                     continue
-
                 try:
                     response = json.loads(line)
                     req_id = response.get("request_id")
-
                     if req_id in self.pending_requests:
                         self.pending_requests[req_id].set_result(response)
 
@@ -71,6 +69,7 @@ class MPV:
         """Абсолютно безпечний асинхронний виклик."""
         try:
             if not self.writer:
+                print("writer is none")
                 await self.connect()
 
             req_id = int(time.time() * 1000000)
