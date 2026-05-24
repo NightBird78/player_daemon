@@ -22,7 +22,6 @@ def create_player():
 
             player = MPRISPlayer()
             bus = SessionBus()
-            # bus.publish("org.mpris.MediaPlayer2.python_player", player)
             bus.publish(
                 "org.mpris.MediaPlayer2.python_player",
                 ("/org/mpris/MediaPlayer2", player),
@@ -31,13 +30,3 @@ def create_player():
             return player, asyncio.new_event_loop()
         case _:
             raise OSError(f"Платформа {sys.platform} не підтримується")
-
-
-# Приклад ініціалізації
-# player = create_player()
-
-# Якщо це Linux, реєструємо в DBus
-# if sys.platform.startswith("linux"):
-# from pydbus import SessionBus
-
-# bus = SessionBus()

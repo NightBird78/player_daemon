@@ -26,6 +26,7 @@
             min-height: 100vh;
             padding: 15px;
             box-sizing: border-box;
+            cursor: default;
         }
 
         .header-panel {
@@ -204,8 +205,89 @@
         .btn-circle:disabled { opacity: 0.2; cursor: default; }
 
         .queue-clouds { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; width: 100%; overflow-y: auto; }
-        .queue-item { background: #1e1e1e; border: 1px solid #333; padding: 10px; border-radius: 10px; font-size: 13px; }
+        #queue-cloud-container {
+            overflow-y: auto;
+            overflow-x: visible;
+            position: relative;
+        }
+        .queue-item { 
+            background: #1e1e1e; 
+            border: 1px solid #333; 
+            padding: 10px; 
+            border-radius: 10px; 
+            font-size: 13px; 
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .item-menu-btn {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 20px;
+            padding: 0 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+            height: 100%;
+        }
+        .queue-item-content {
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        .item-menu-btn:hover {
+            color: white;
+        }
+        .item-dropdown {
+            position: fixed;
+            right: 10px;
+            top: 40px;
+            background: var(--panel-bg);
+            border: 1px solid #444;
+            border-radius: 8px 8px 0;
+            z-index: 200;
+            max-width: 180px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+            display: none;
+            flex-direction: column;
+        }
+        
+        .item-dropdown.show {
+            display: flex;
+        }
+        
+        .item-dropdown button {
+            width: 100%;
+            padding: 10px 16px;
+            text-align: left;
+            background: none;
+            color: var(--text);
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .item-dropdown button.action-next {
+            color: var(--accent);
+            font-weight: bold;
+        }        
+        .item-dropdown button:hover {
+            background: #333;
+        }
+        
+        .item-dropdown button.action-next {
+            color: var(--accent);
+            font-weight: bold;
+        }
+
         .queue-item.active { border-left: 4px solid var(--accent); }
+
+
         .queue-item.passive { border-left: 4px solid var(--action-color); }
 
         /* --- Dropdown --- */
@@ -525,6 +607,7 @@
             } 
             else if (data.type === "response") {
                 addLog(responseLog, responseLogMob, `Status: ${data.status} | Mode: ${data.mode}`, "res-tag");
+                if (["Next", "Stop/End", "init"].includes(data.action)) progressBar.style.width = "0%";
             } 
             else if (data.type === "process") {
                 if (data.percent !== undefined) progressBar.style.width = data.percent + "%";
@@ -559,21 +642,24 @@
             }
             updatePlayerUI(data);
         }
-
         function updatePlayerUI(data) {
             const isStopped = data.status === "Stopped";
+            
+            updateGlobalPlayer(data, isStopped);
+            
+            renderQueue(data.queue || [], isStopped);
+        }
+        
+        function updateGlobalPlayer(data, isStopped) {
             const playerCard = document.querySelector('.player-card');
             playerCard.className = `player-card ${isStopped ? 'stopped' : (data.mode || 'stopped')}`;
             
-            if (isStopped) {
-                playerBtns.forEach(btn => btn.disabled = true);
-                progressBar.style.width = "0%";
-            } else {
-                playerBtns.forEach(btn => btn.disabled = false);
-            }
-
-            document.getElementById('queue-count').innerText = isStopped ? '0/0' : `${(data.active_size > 0 ? data.active_index + 1 : 0)}/${data.active_size || 0}`;
-            document.getElementById('passive-count').innerText = isStopped ? '0/0' : `${(data.passive_size > 0 ? data.passive_index + 1 : 0)}/${data.passive_size || 0}`;
+            playerBtns.forEach(btn => btn.disabled = isStopped);
+            if (isStopped) progressBar.style.width = "0%";
+        
+            const formatCount = (size, index) => isStopped ? '0/0' : `${size > 0 ? index + 1 : 0}/${size || 0}`;
+            document.getElementById('queue-count').innerText = formatCount(data.active_size, data.active_index);
+            document.getElementById('passive-count').innerText = formatCount(data.passive_size, data.passive_index);
             document.getElementById('player-status').innerText = isStopped ? "Очікування..." : (data.status || "Грає");
             
             const trackEl = document.getElementById('current-track');
@@ -581,25 +667,94 @@
             
             trackEl.classList.remove('marquee');
             trackEl.innerText = newTitle;
-
+        
             if (!isStopped && trackEl.scrollWidth > trackEl.parentElement.clientWidth) {
                 const duration = Math.max(8, trackEl.scrollWidth / 30); 
                 trackEl.style.animationDuration = `${duration}s`;
                 trackEl.classList.add('marquee');
             }
-
+        }
+        
+        function renderQueue(queue, isStopped) {
             const cloudContainer = document.getElementById('queue-cloud-container');
             cloudContainer.innerHTML = '';
-            if (!isStopped && data.queue) {
-                data.queue.forEach(track => {
-                    const div = document.createElement('div');
-                    div.className = `queue-item ${track.type}`;
-                    div.innerHTML = `<div class="track-title"><b>${track.title || "Unknown"}</b></div>
-                                     <div class="track-artist">${track.artist || "Unknown Artist"}</div>`;
-                    cloudContainer.appendChild(div);
-                });
-            }
+            
+            if (isStopped) return;
+        
+            queue.forEach((track, index) => {
+                const div = document.createElement('div');
+                div.className = `queue-item ${track.type}`;
+                
+                const trackId = track.id !== undefined ? track.id : index;
+                const prevTrack = index > 0 ? queue[index - 1] : null;
+                const nextTrack = index < queue.length - 1 ? queue[index + 1] : null;
+        
+                const menuHtml = buildTrackMenuHtml(trackId, track.url, index, queue.length, track.type, prevTrack, nextTrack);
+        
+                div.innerHTML = `
+                    <div class="queue-item-content">
+                        <div class="track-title"><b>${track.title || "Unknown"}</b></div>
+                        <div class="track-artist">${track.artist || "Unknown Artist"}</div>
+                    </div>
+                    <button class="item-menu-btn" onclick="toggleItemMenu(event, '${trackId}')">
+                        <span class="mdi mdi-dots-vertical"></span>
+                    </button>
+                    <div id="item-menu-${trackId}" class="item-dropdown">
+                        ${menuHtml}
+                    </div>
+                `;
+                cloudContainer.appendChild(div);
+            });
         }
+
+        function buildTrackMenuHtml(trackId, trackUrl, index, totalTracks, currentType, prevTrack, nextTrack) {
+            const isFirst = index === 0;
+            const isSecond = index === 1;
+            const isLast = index === totalTracks - 1;
+            const isPassive = currentType === 'passive';
+        
+            const buttons = [];
+        
+            const escapeHtml = (text) => text.replace(/"/g, '&quot;');
+            const safeUrl = escapeHtml(trackUrl);
+        
+            if (!isFirst) {
+                buttons.push(`<button class="action-next" data-action="next" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">Відтворити наступним</button>`);
+            }
+        
+            const canMoveUp = !isFirst && !isSecond && !(isPassive && prevTrack && prevTrack.type === 'active');
+            if (canMoveUp) {
+                buttons.push(`<button data-action="move_up" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">Перемістити вище</button>`);
+            }
+        
+            const canMoveDown = !isLast && !(!isPassive && nextTrack && nextTrack.type === 'passive');
+            if (canMoveDown) {
+                buttons.push(`<button data-action="move_down" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">Перемістити нижче</button>`);
+            }
+        
+            const actionType = isPassive ? 'to_active' : 'to_passive';
+            const labelType = isPassive ? 'В активні' : 'В пасивні';
+            buttons.push(`<button data-action="${actionType}" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">${labelType}</button>`);
+        
+            if (isPassive) {
+                buttons.push(`<button data-action="postpone" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)">Відкласти</button>`);
+            }
+        
+            buttons.push(`<button data-action="remove" data-url="${safeUrl}" onclick="sendTrackAction(this.dataset.action, this.dataset.url)" style="color: #ff5252;">Прибрати</button>`);
+        
+            if (buttons.length > 0) {
+                buttons[0] = buttons[0].replace('<button', '<button style="border-radius: 8px 8px 0 0;"');
+                
+                const lastIndex = buttons.length - 1;
+                if (buttons[lastIndex].includes('style=')) {
+                    buttons[lastIndex] = buttons[lastIndex].replace('style="', 'style="border-radius: 0 0 0 8px; ');
+                } else {
+                    buttons[lastIndex] = buttons[lastIndex].replace('<button', '<button style="border-radius: 0 0 0 8px;"');
+                }
+            }
+        
+            return buttons.join('\n');
+        }        
 
         function addLog(deskContainer, mobContainer, text, className) {
             const now = new Date().toLocaleTimeString();
@@ -630,6 +785,7 @@
                 input.value = '';
             }
         }
+
         function searchInputMessage() {
             if (input.value.trim()) {
                 sendCommand({ cmd: "search", text: input.value });
@@ -637,6 +793,54 @@
             }
         }
 
+        function toggleItemMenu(event, trackId) {
+            event.stopPropagation();
+            
+            const currentMenu = document.getElementById(`item-menu-${trackId}`);
+            const isAlreadyOpen = currentMenu && currentMenu.classList.contains('show');
+        
+            document.querySelectorAll('.item-dropdown').forEach(menu => {
+                menu.classList.remove('show');
+            });
+        
+            if (currentMenu && !isAlreadyOpen) {
+                const btnBounds = event.currentTarget.getBoundingClientRect();
+        
+                currentMenu.classList.add('show');
+        
+                const menuHeight = currentMenu.offsetHeight;
+                currentMenu.style.top = `${btnBounds.top - menuHeight + 15}px`; 
+                
+                currentMenu.style.left = `${btnBounds.right - 205}px`;
+        
+                if (btnBounds.right - 180 < 0) {
+                    currentMenu.style.left = `10px`;
+                }
+            }
+        }
+
+        function sendTrackAction(action, trackId) {
+            sendCommand({
+                cmd: "queue_action",
+                action: action,
+                track_id: trackId
+            });
+            document.querySelectorAll('.item-dropdown').forEach(menu => menu.classList.remove('show'));
+        }
+
+        const originalWindowClick = window.onclick;
+        window.onclick = function(e) {
+            if (typeof originalWindowClick === 'function') originalWindowClick(e);
+            hideAllItemMenus();
+        };
+
+        document.getElementById('queue-cloud-container').addEventListener('scroll', hideAllItemMenus);
+
+        function hideAllItemMenus() {
+            document.querySelectorAll('.item-dropdown').forEach(menu => {
+                menu.classList.remove('show');
+            });
+        }
         function sendControl(action) { sendCommand({ cmd: "control", action }); }
         function sendListMessage() { sendCommand({ cmd: "localplaylist" }); }
         function sendCommand(obj) { if (socket?.readyState === 1) socket.send(JSON.stringify(obj)); }

@@ -103,6 +103,34 @@ async def websocket_handler(request):
                 elif data["action"] == "shuffle":
                     await player.async_shuffle(ws_client=ws)
                     continue
+
+            # queue control
+            elif cmd == "queue_action":
+                if data["action"] == "next":
+                    player.queue.next(data["track_id"])
+                elif data["action"] == "move_up":
+                    player.queue.move(data["track_id"], "up")
+                elif data["action"] == "move_down":
+                    player.queue.move(data["track_id"], "down")
+                elif data["action"] == "to_active":
+                    player.queue.change(data["track_id"], "active")
+                elif data["action"] == "to_passive":
+                    player.queue.change(data["track_id"], "passive")
+                elif data["action"] == "postpone":
+                    player.queue.postpone(data["track_id"])
+                elif data["action"] == "remove":
+                    status, response = player.queue.remove(data["track_id"])
+                    update = status
+                    if not status:
+                        await send_data(
+                            ws,
+                            player,
+                            "warning",
+                            _only=True,
+                            additional={"warning": "nothing to remove"},
+                        )
+                        continue
+
             elif cmd == "search":
                 resp = await utils.search(data["text"])
 
@@ -164,10 +192,10 @@ async def process_local(player, ws):
                     continue
                 await player.add_passive(str(item.absolute()))
 
-                if len(player.passive_queue) % 10 == 0:
+                if len(player.queue.passive_queue) % 10 == 0:
                     await asyncio.sleep(0)
 
-                if len(player.passive_queue) % 200 == 0:
+                if len(player.queue.passive_queue) % 200 == 0:
                     await send_data(ws, player, "Loading", update_queue=update)
                     update = False
             await send_data(ws, player, "Loading", update_queue=update)
@@ -181,10 +209,10 @@ async def process_playlist_background(url, player, ws):
         async for item_url in utils.stream_links_async(url):
             await player.add_passive(item_url)
 
-            if len(player.passive_queue) % 10 == 0:
+            if len(player.queue.passive_queue) % 10 == 0:
                 await asyncio.sleep(0)
 
-            if len(player.passive_queue) % 200 == 0:
+            if len(player.queue.passive_queue) % 200 == 0:
                 await send_data(ws, player, "Loading", update_queue=update)
                 update = False
         await send_data(ws, player, "Loading", update_queue=update)

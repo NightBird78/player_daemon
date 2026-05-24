@@ -26,7 +26,8 @@ GLib.Variant = lambda t, v: MagicMock(unpack=lambda: v)
 import server
 from mpris_player import MPRISPlayer
 from smtc_player import SMTCPlayer
-if sys.platform == 'win32':
+
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 # --- Допоміжні класи ---
 
@@ -64,7 +65,8 @@ def player(request, mocker):
 
     p = MPRISPlayer() if request.param == "linux" else SMTCPlayer(None)
     p.mpv = MagicMock()
-    p.mpv.send.return_value = {"error": "success"}
+    p.mpv.send = AsyncMock(return_value={"error": "success"})
+    p.init_mpv = AsyncMock()
     return p
 
 
@@ -120,9 +122,9 @@ async def ws_manager(player, aiohttp_client):
 
 @pytest.mark.asyncio
 async def test_player_play_current_updates_metadata(player):
-    player.active_queue = ["http://fakeurl.com"]
-    player.active_index = 0
-    player.mode = "active"
+    player.queue.active_queue = ["http://fakeurl.com"]
+    player.queue.active_index = 0
+    player.queue.mode = "active"
 
     await player.play_current()
 
@@ -132,9 +134,9 @@ async def test_player_play_current_updates_metadata(player):
 
 @pytest.mark.asyncio
 async def test_player_pause(player):
-    player.active_queue = ["http://fakeurl.com"]
-    player.active_index = 0
-    player.mode = "active"
+    player.queue.active_queue = ["http://fakeurl.com"]
+    player.queue.active_index = 0
+    player.queue.mode = "active"
     player.PlaybackStatus = "Playing"
 
     await player.async_play_pause()
@@ -147,12 +149,13 @@ async def test_player_pause(player):
     assert player.PlaybackStatus == "Playing"
     player.mpv.send.assert_called()
 
+
 @pytest.mark.asyncio
 async def test_ws_playpause(player, ws_manager):
-    
-    player.active_queue = ["http://fakeurl.com"]
-    player.active_index = 0
-    player.mode = "active"
+
+    player.queue.active_queue = ["http://fakeurl.com"]
+    player.queue.active_index = 0
+    player.queue.mode = "active"
     player.PlaybackStatus = "Playing"
 
     await ws_manager.ws.send_json({"cmd": "control", "action": "pause"})
@@ -167,31 +170,32 @@ async def test_ws_playpause(player, ws_manager):
     assert resp["type"] == "response"
     assert resp["status"] == "Playing"
 
+
 @pytest.mark.asyncio
 async def test_player_stop_clears_everything(player):
-    player.active_queue = ["url1"]
-    player.active_index = 0
+    player.queue.active_queue = ["url1"]
+    player.queue.active_index = 0
     player.PlaybackStatus = "Playing"
 
     await player.async_stop()
 
-    assert player.active_queue == []
-    assert player.active_index == -1
+    assert player.queue.active_queue == []
+    assert player.queue.active_index == -1
     assert player.PlaybackStatus == "Stopped"
 
 
 @pytest.mark.asyncio
 async def test_fallback_to_passive_when_active_ends(player):
-    player.active_queue = ["last_active_url"]
-    player.active_index = 0
-    player.mode = "active"
-    player.passive_queue = ["passive_url"]
-    player.passive_index = -1
+    player.queue.active_queue = ["last_active_url"]
+    player.queue.active_index = 0
+    player.queue.mode = "active"
+    player.queue.passive_queue = ["passive_url"]
+    player.queue.passive_index = -1
 
     await player.async_next()
 
-    assert player.mode == "passive"
-    assert player.passive_index == 0
+    assert player.queue.mode == "passive"
+    assert player.queue.passive_index == 0
 
 
 # --- Тести WebSocket API (Integration) ---
@@ -222,10 +226,10 @@ async def test_ws_command_play_updates_status(ws_manager):
 @pytest.mark.asyncio
 async def test_ws_multiple_plays_queue_management(player, ws_manager):
     url = "http://fakeurl.com"
-    player.passive_queue = ["url"]
-    player.passive_index = 0
-    player.mode = "active"
-    player.current_mode = "passive"
+    player.queue.passive_queue = ["url"]
+    player.queue.passive_index = 0
+    player.queue.mode = "active"
+    player.queue.current_mode = "passive"
     player.PlaybackStatus = "Playing"
 
     await ws_manager.ws.send_json({"cmd": "play", "url": url})
@@ -243,10 +247,10 @@ async def test_ws_multiple_plays_queue_management(player, ws_manager):
 
 @pytest.mark.asyncio
 async def test_ws_play_next(player, ws_manager):
-    player.active_queue = ["url1", "url2"]
-    player.active_index = 0
-    player.mode = "active"
-    player.current_mode = "active"
+    player.queue.active_queue = ["url1", "url2"]
+    player.queue.active_index = 0
+    player.queue.mode = "active"
+    player.queue.current_mode = "active"
     player.PlaybackStatus = "Playing"
 
     await ws_manager.ws.send_json({"cmd": "control", "action": "next"})
@@ -259,9 +263,9 @@ async def test_ws_play_next(player, ws_manager):
 
 @pytest.mark.asyncio
 async def test_ws_eoq(player, ws_manager):
-    player.passive_queue = ["passive_url"]
-    player.passive_index = 0
-    player.mode = "passive"
+    player.queue.passive_queue = ["passive_url"]
+    player.queue.passive_index = 0
+    player.queue.mode = "passive"
     player.PlaybackStatus = "Playing"
 
     await player.async_next()
@@ -282,13 +286,13 @@ async def test_ws_queue_structure(player, ws_manager):
         "url6": "passive",
     }
 
-    player.active_queue = ["url1", "url2", "url3"]
-    player.passive_queue = ["url4", "url5", "url6"]
+    player.queue.active_queue = ["url1", "url2", "url3"]
+    player.queue.passive_queue = ["url4", "url5", "url6"]
 
-    player.active_index = 0
-    player.passive_index = -1
+    player.queue.active_index = 0
+    player.queue.passive_index = -1
 
-    player.mode = "active"
+    player.queue.mode = "active"
     player.PlaybackStatus = "Playing"
 
     await player._update_queue()
@@ -308,8 +312,8 @@ async def test_ws_shuffle_passive(mock_shuffle, player, ws_manager):
     expected_result = ["url3", "url1", "url2"]
     mock_shuffle.set_result(expected_result)
 
-    player.passive_queue = ["url1", "url2", "url3"]
-    player.passive_index = 1
+    player.queue.passive_queue = ["url1", "url2", "url3"]
+    player.queue.passive_index = 1
 
     player.PlaybackStatus = "Playing"
 
@@ -321,7 +325,7 @@ async def test_ws_shuffle_passive(mock_shuffle, player, ws_manager):
     assert response["passive_index"] == 0
     assert len(resp_loading["queue"]) == 2
 
-    assert list(player.passive_queue) == expected_result
+    assert list(player.queue.passive_queue) == expected_result
 
     mock_shuffle.assert_called_once()
 
@@ -331,12 +335,12 @@ async def test_ws_shuffle_passive_while_active(mock_shuffle, player, ws_manager)
     expected_result = ["url3", "url1", "url2"]
     mock_shuffle.set_result(expected_result)
 
-    player.passive_queue = ["url1", "url2", "url3"]
-    player.passive_index = 1
-    player.active_queue = ["url0"]
-    player.active_index = 0
-    player.mode = "active"
-    player.current_mode = "active"
+    player.queue.passive_queue = ["url1", "url2", "url3"]
+    player.queue.passive_index = 1
+    player.queue.active_queue = ["url0"]
+    player.queue.active_index = 0
+    player.queue.mode = "active"
+    player.queue.current_mode = "active"
 
     player.PlaybackStatus = "Playing"
 
@@ -348,7 +352,7 @@ async def test_ws_shuffle_passive_while_active(mock_shuffle, player, ws_manager)
     assert response["passive_index"] == -1
     assert len(resp_loading["queue"]) == 3
 
-    assert list(player.passive_queue) == expected_result
+    assert list(player.queue.passive_queue) == expected_result
 
     mock_shuffle.assert_called_once()
 
@@ -358,12 +362,12 @@ async def test_ws_shuffle_passive_switch_active(mock_shuffle, player, ws_manager
     expected_result = ["url3", "url1", "url2"]
     mock_shuffle.set_result(expected_result)
 
-    player.passive_queue = ["url1", "url2", "url3"]
-    player.passive_index = 1
-    player.active_queue = ["url0"]
-    player.active_index = -1
-    player.mode = "active"
-    player.current_mode = "passive"
+    player.queue.passive_queue = ["url1", "url2", "url3"]
+    player.queue.passive_index = 1
+    player.queue.active_queue = ["url0"]
+    player.queue.active_index = -1
+    player.queue.mode = "active"
+    player.queue.current_mode = "passive"
 
     player.PlaybackStatus = "Playing"
 
@@ -376,6 +380,6 @@ async def test_ws_shuffle_passive_switch_active(mock_shuffle, player, ws_manager
     assert response["active_index"] == 0
     assert len(resp_loading["queue"]) == 3
 
-    assert list(player.passive_queue) == expected_result
+    assert list(player.queue.passive_queue) == expected_result
 
     mock_shuffle.assert_called_once()

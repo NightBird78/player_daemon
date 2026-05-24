@@ -1,17 +1,16 @@
-from collections import deque
 from server import ws_broadcast
 from mpv_ipc import MPV, MPVError
 from config import cleanup_socket, NEXT_QUEUE_LEN
 from abc import ABC, abstractmethod
 import subprocess
 import utils
-from itertools import islice
 import asyncio
-import random
 import shutil
 import os
 import yt_dlp
 from pathlib import Path
+from queue_manager import QueueManager
+import sys
 
 
 class BasePlayer(ABC):
@@ -21,13 +20,7 @@ class BasePlayer(ABC):
         self.proc = None
 
         self.lock = asyncio.Lock()
-
-        self.active_queue = deque()
-        self.passive_queue = deque()
-        self.active_index = -1
-        self.passive_index = -1
-        self.mode = "passive"
-        self.current_mode = "passive"
+        self.queue = QueueManager()
         self.PlaybackStatus = "Stopped"
         self.Metadata = {"title": "wait for", "artist": ["queue"]}
 
@@ -36,12 +29,10 @@ class BasePlayer(ABC):
         exists_mpv = shutil.which("mpv")
         if not exists_mpv:
             raise OSError("mpv is not found in system and/or in PATH")
-        else:
-            print(f"found mpv:        {exists_mpv}")
+        print(f"found mpv:        {exists_mpv}")
         self.mpv_wrapper = exists_mpv
 
         exists_dlp = shutil.which("yt-dlp")
-
         if not exists_dlp:
             exists_dlp = self.find_ytdlp()
             dlp = Path(exists_dlp)
@@ -67,11 +58,11 @@ class BasePlayer(ABC):
                     "type": type,
                     "action": action_name,
                     "status": self.PlaybackStatus,
-                    "mode": self.current_mode,
-                    "active_size": len(self.active_queue),
-                    "active_index": self.active_index,
-                    "passive_size": len(self.passive_queue),
-                    "passive_index": self.passive_index,
+                    "mode": self.queue.current_mode,
+                    "active_size": len(self.queue.active_queue),
+                    "active_index": self.queue.active_index,
+                    "passive_size": len(self.queue.passive_queue),
+                    "passive_index": self.queue.passive_index,
                     "metadata": self.get_meta(),
                     "queue": self.queue_list,
                 }
@@ -85,39 +76,19 @@ class BasePlayer(ABC):
     async def _update_queue(self):
         async with self.lock:
             self.queue_list.clear()
-            queue_list_temp = {}
 
-            start_active = self.active_index + 1
-            queue_list_temp = {
-                item: "active"
-                for item in islice(
-                    self.active_queue, start_active, start_active + NEXT_QUEUE_LEN
-                )
-            }
+            queue_list_temp = self.queue.get_next_slots(NEXT_QUEUE_LEN)
 
-            remaining_slots = NEXT_QUEUE_LEN - len(queue_list_temp)
-            if remaining_slots > 0:
-                start_passive = self.passive_index + 1
-                queue_list_temp = queue_list_temp | {
-                    item: "passive"
-                    for item in islice(
-                        self.passive_queue,
-                        start_passive,
-                        start_passive + remaining_slots,
-                    )
-                }
             errors = False
             for q, v in queue_list_temp.items():
                 meta = await utils.fetch_metadata(q)
                 if meta is None:
                     errors = True
-                    if q in self.active_queue:
-                        self.active_queue.remove(q)
-                    if q in self.passive_queue:
-                        self.passive_queue.remove(q)
+                    self.queue.remove_corrupted_url(q)
                     print(f"WARN: Found error-link {q}")
                     continue
                 self.queue_list.append({"url": q, "type": v} | meta)
+
             if len(self.queue_list) > 0:
                 await self.broadcast_state("queue", type="update")
             if errors:
@@ -128,222 +99,171 @@ class BasePlayer(ABC):
         module_path = yt_dlp.__file__
         site_packages_dir = os.path.dirname(os.path.dirname(module_path))
         scripts_dir = os.path.join(os.path.dirname(site_packages_dir), "Scripts")
-        exe_path = os.path.join(scripts_dir, "youtube-dl")
-        return exe_path
+        return os.path.join(scripts_dir, "youtube-dl")
 
-    def init_mpv(self, url):
+    async def init_mpv(self, url):
         cleanup_socket(self.socket)
+
         self.proc = subprocess.Popen(
             [
                 self.mpv_wrapper,
                 f"--script-opts=ytdl_hook-ytdl_path={self.yt_dlp_path}",
                 "--no-video",
                 f"--input-ipc-server={self.socket}",
+                "--idle=yes",
                 "--volume=50",
                 "--msg-level=all=no",
                 url,
             ]
         )
 
+        timeout = 5.0
+        start_time = asyncio.get_running_loop().time()
+
+        print("Очікування ініціалізації IPC сокету MPV...")
+
+        while True:
+            if sys.platform == "win32":
+                try:
+                    with open(self.socket, "r+b") as f:
+                        break
+                except FileNotFoundError:
+                    pass
+            else:
+                if os.path.exists(self.socket):
+                    break
+
+            if self.proc.poll() is not None:
+                raise RuntimeError(
+                    f"Процес MPV неочікувано завершився з кодом {self.proc.returncode} під час старту!"
+                )
+
+            if asyncio.get_running_loop().time() - start_time > timeout:
+                raise TimeoutError(
+                    f"Не вдалося дочекатися створення сокету MPV за {timeout} секунд."
+                )
+
+            await asyncio.sleep(0.05)
+
+        print("MPV успішно піднято IPC-сервер! Підключення...")
+
+        await self.mpv.connect()
+
     def get_current_url(self):
-        if self.mode == "active" and 0 <= self.active_index < len(self.active_queue):
-            return self.active_queue[self.active_index]
-        if self.mode == "passive" and 0 <= self.passive_index < len(self.passive_queue):
-            return self.passive_queue[self.passive_index]
-        return None
+        return self.queue.get_current_url()
 
     async def add_active(self, item):
         if await utils.is_playlist(item):
             return False
-        self.active_queue.append(item)
 
-        self.mode = "active"
-        # self.active_index = len(self.active_queue) - 1
-        if self.passive_index == -1 and self.active_index == -1:
-            self.active_index = 0
-            self.current_mode = "active"
+        should_play = self.queue.add_active(item)
+        if should_play:
             await self.play_current()
         return True
 
     async def set_active_queue(self, items):
-        self.active_queue = deque(items)
-        self.active_index = 0
-
-        self.mode = "active"
+        self.queue.set_active_queue(items)
         await self.play_current()
 
-    # =========================
-    # PASSIVE queue (fallback)
-    # =========================
     async def add_passive(self, item):
-        self.passive_queue.append(item)
-
-        if self.passive_index == -1:
-            if self.mode == "passive" and self.PlaybackStatus != "Playing":
-                self.passive_index = 0
-                await self.play_current()
+        should_play = self.queue.add_passive(item)
+        if should_play and self.PlaybackStatus != "Playing":
+            await self.play_current()
 
     async def set_passive_queue(self, items):
-        self.passive_queue = deque(items)
-
-        if self.mode == "passive":
-            self.passive_index = 0
+        should_play = self.queue.set_passive_queue(items)
+        if should_play:
             await self.play_current()
 
     async def async_shuffle(self, *, ws_client=None):
-        is_active = self.current_mode == "active"
-        if not is_active:
-            if self.PlaybackStatus == "Playing":
-                await self.async_play_pause(broadcast=False)
+        is_active = self.queue.current_mode == "active"
+        if not is_active and self.PlaybackStatus == "Playing":
+            await self.async_play_pause(broadcast=False)
 
-        temp_q = self.passive_queue.copy()
-
-        random.shuffle(temp_q)
-
-        self.passive_queue = deque(temp_q)
+        self.queue.shuffle_passive()
         self.queue_list.clear()
-        self.passive_index = -1
+
         if not is_active:
             await self.async_next(broadcast=False)
 
         await self.broadcast_state("shuffle", ws_client=ws_client, update_queue=True)
 
     async def async_play_pause(self, *, ws_client=None, broadcast: bool = True):
-        if len(self.active_queue) == 0 and len(self.passive_queue) == 0:
+        if len(self.queue.active_queue) == 0 and len(self.queue.passive_queue) == 0:
             return
+        should_pause = self.PlaybackStatus == "Playing"
 
-        if self.PlaybackStatus == "Paused":
-            res = self.mpv.send({"command": ["set_property", "pause", False]})
-            if res is None:
-                pass
-            elif res.get("error") is None:
-                return await self.async_play_pause(
-                    ws_client=ws_client, broadcast=broadcast
-                )
-            elif res.get("error") != "success":
-                raise MPVError(f"Не вдалося поставити на паузу: {res.get('error')}")
-        elif self.PlaybackStatus == "Playing":
-            res = self.mpv.send({"command": ["set_property", "pause", True]})
-            if res is None:
-                pass
-            elif res.get("error") is None:
-                return await self.async_play_pause(
-                    ws_client=ws_client, broadcast=broadcast
-                )
-            elif res.get("error") != "success":
-                raise MPVError(f"Не вдалося поставити на паузу: {res.get('error')}")
+        res = await self.mpv.send({"command": ["set_property", "pause", should_pause]})
+        if res is dict and res.get("error") and res.get("error") != "success":
+            raise MPVError(f"Не вдалося змінити стан паузи: {res.get('error')}")
 
-        self.PlaybackStatus = (
-            "Paused" if self.PlaybackStatus == "Playing" else "Playing"
-        )
+        self.PlaybackStatus = "Paused" if should_pause else "Playing"
 
         self.update_widget(
             meta=self.get_meta(),
             additional={"PlaybackStatus": self.PlaybackStatus, "CanGoNext": True},
         )
-
         await self.broadcast_state(
             "PlayPause", ws_client=ws_client, broadcast=broadcast
         )
 
     async def play_current(self):
-        url = (
-            self.active_queue[self.active_index]
-            if self.mode == "active"
-            else self.passive_queue[self.passive_index]
-        )
+        url = self.queue.get_current_url()
+        if not url:
+            return
         try:
             meta = await utils.fetch_metadata(url)
             if meta is None:
                 asyncio.create_task(self.async_next())
                 return
-
             if not self.proc:
-                self.init_mpv(url)
+                await self.init_mpv(url)
             else:
-                self.mpv.send({"command": ["loadfile", url, "replace"]})
-
+                await self.mpv.send({"command": ["loadfile", url, "replace"]})
             await self.async_play_pause(broadcast=False)
             self.update_widget(meta=meta, additional={"CanGoNext": True})
         except Exception as e:
-            print(f"an error in play_current {e}", e.__cause__)
+            print(f"an error in play_current {e}")
 
     async def async_next(self, *, broadcast=True, ws_client=None, count=1):
-        local_count = max(1, count)
         if self.PlaybackStatus == "Playing":
             await self.async_play_pause(broadcast=False)
+
         self.set_meta("loading", "loading")
-        self.update_widget(
-            meta=self.get_meta(),
-            additional={"CanGoNext": False},
-        )
+        self.update_widget(meta=self.get_meta(), additional={"CanGoNext": False})
 
-        res = {}
-        if self.mode == "active":
-            self.current_mode = "active"
-            if self.active_index + local_count < len(self.active_queue):
-                self.active_index += local_count
-                await self.play_current()
+        next_step = self.queue.advance_next(count)
 
-                try:
-                    self.queue_list = self.queue_list[local_count:]
-                except:
-                    pass
+        if next_step in ("play_active", "play_passive"):
+            await self.play_current()
 
-                res = {"current": self.active_queue[self.active_index]}
-            else:
-                local_count = (self.active_index + local_count) - len(self.active_queue)
-                self.active_queue.clear()
-                self.active_index = -1
+            try:
+                self.queue_list = self.queue_list[max(1, count) :]
+            except Exception:
+                pass
 
-                self.mode = "passive"
-                self.current_mode = "passive"
-
-                if self.passive_queue:
-                    await self.async_next(ws_client=ws_client, count=local_count + 1)
-                    return
-                else:
-                    await self.async_stop(ws_client=ws_client)
-                    return
-
+            res = {"current": self.queue.get_current_url()}
+            await self.broadcast_state(
+                "Next",
+                broadcast=broadcast,
+                ws_client=ws_client,
+                additional=res,
+                update_queue=True,
+            )
         else:
-            self.current_mode = "passive"
-            if self.passive_index + local_count < len(self.passive_queue):
-                self.passive_index += local_count
-                await self.play_current()
-
-                try:
-                    self.queue_list = self.queue_list[local_count:]
-                except:
-                    pass
-
-                res = {"current": self.passive_queue[self.passive_index]}
-
-            else:
-                await self.async_stop(ws_client=ws_client)
-                return
-        await self.broadcast_state(
-            "Next",
-            broadcast=broadcast,
-            ws_client=ws_client,
-            additional=res,
-            update_queue=True,
-        )
+            await self.async_stop(ws_client=ws_client, broadcast=broadcast)
 
     async def async_stop(self, *, ws_client=None, broadcast=True):
-        self.mpv.send({"command": ["quit"]})
+        try:
+            await self.mpv.send({"command": ["quit"]})
+        except Exception:
+            pass
+
         self.PlaybackStatus = "Stopped"
-
         self.set_meta("wait for", "queue")
-        self.update_widget(
-            meta=self.get_meta(),
-            additional={"CanGoNext": False},
-        )
-        self.active_queue.clear()
-        self.passive_queue.clear()
+        self.update_widget(meta=self.get_meta(), additional={"CanGoNext": False})
 
-        self.active_index = -1
-        self.passive_index = -1
+        self.queue.clear()
 
         await self.broadcast_state("Stop/End", ws_client=ws_client, broadcast=broadcast)
 
