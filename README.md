@@ -3,8 +3,12 @@
 **Сучасний дистанційний аудіоплеєр** для Linux (і Windows) з підтримкою YouTube та локальних файлів.
 
 Керуйте музикою зі свого комп’ютера з будь-якого пристрою - телефону, планшета, іншого ПК чи навіть браузера на холодильнику - через зручний веб-інтерфейс.
+<p align="center">
+  <img alt="desctop-view" src="https://github.com/user-attachments/assets/caca69e4-8497-4801-941d-69bd8131ba0b" height="400" />
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img alt="mobile-view" src="https://github.com/user-attachments/assets/d00a8241-ce22-4320-b50f-18db18fc098d" height="400" />
+</p>
 
-<img width="1215" height="589" alt="зображення" src="https://github.com/user-attachments/assets/01fb6428-768b-48da-bb0d-f7de72214617" />
 
 ---
 
@@ -40,54 +44,128 @@
 - **Frontend**: Чистий HTML + CSS + JavaScript (односторінковий)
 
 ---
+## Запуск, Встановлення та Налаштування
 
-## Вимоги та встановлення
+Для роботи проєкту потрібні певні системні програми та Python-бібліотеки. Нижче наведено повну інструкцію для встановлення, налаштування та запуску залежно від вашої операційної системи.
 
-### Linux
+> **Рекомендація:** Перед встановленням бібліотек **рекомендується** створити та активувати віртуальне середовище (`venv`), щоб уникнути конфліктів та не засмічувати глобальне Python-середовище.
+
+### 1. Створення віртуального середовища (рекомендовано для всіх ОС)
 
 ```bash
-sudo apt update
-sudo apt install mpv python3-pip python3-dbus python3-gi gir1.2-glib-2.0
+# Створення venv
+python3 -m venv venv
 
+# Активація (Linux / macOS)
+source venv/bin/activate
+
+# Активація (Windows)
+venv\Scripts\activate
+```
+
+### 2. Встановлення для Linux (Ubuntu / Debian)
+
+Виконайте всі команди в терміналі.
+
+#### 2.1. Системні залежності
+```bash
+sudo apt update && sudo apt install -y \
+    mpv \
+    python3-pip \
+    python3-dbus \
+    python3-gi \
+    gir1.2-glib-2.0
+```
+
+#### 2.2. Python-бібліотеки
+```bash
 pip install websockets pydbus mutagen gbulb yt-dlp aiohttp pygobject==3.48.2
 ```
 
-### Windows
+### 3. Встановлення для Windows
 
+#### 3.1. Завантаження необхідних програм
+1. Скачайте **mpv** з [офіційного сайту](https://mpv.io/).
+2. Скачайте **FFmpeg** (включає `ffmpeg.exe` та `ffprobe.exe`) з [офіційного сайту](https://ffmpeg.org/).
+
+#### 3.2. Розміщення файлів
+Зі скачаних архівів витягніть наступні файли та **скопіюйте їх безпосередньо в кореневу папку проєкту** (поряд з `README.md` та `main.py`):
+
+- `mpv.com`
+- `ffmpeg.exe`
+- `ffprobe.exe`
+
+#### 3.3. Python-бібліотеки
+Відкрийте **Command Prompt**/**cmd** або **PowerShell** у папці проєкту та виконайте:
 ```bash
 pip install websockets mutagen yt-dlp aiohttp winsdk
 ```
 
-Також встановіть [mpv](https://mpv.io/) (з офіційного сайту або Microsoft Store).
+### 4. Оновлення компонентів
 
-> **Рекомендація**: використовуйте віртуальне середовище (`venv`).
-
-### Оновлення yt-dlp
+Якщо відео або аудіо перестали працювати (часто через застарілий `yt-dlp`):
 
 ```bash
 pip install -U yt-dlp
 ```
 
----
+### 5. Запуск проєкту
 
-## Запуск
+1. **Клонуйте репозиторій** (якщо ще не зробили):
+   ```bash
+   git clone https://github.com/NightBird78/player_daemon.git
+   cd player_daemon
+   ```
 
-1. Клонуйте репозиторій
-2. Запустіть сервер:
+2. **Активуйте віртуальне середовище** (якщо використовуєте venv).
+
+3. **Запустіть сервер**:
+   ```bash
+   python main.py
+   ```
+
+Сервер буде доступний за адресою: **http://localhost:8765**, також, при запуску сервера вам буде надано айпі типу `192.168.x.x:8765` для підключення з інших девайсів
+
+4. Відкрийте цю адресу в браузері на будь-якому пристрої в тій самій локальній мережі.
+
+### 6. Автозапуск (Linux - systemd)
+
+Створіть файл користувацького сервісу:
 
 ```bash
-python main.py
+mkdir -p ~/.config/systemd/user/
+nano ~/.config/systemd/user/adv-ws-player.service
 ```
 
-Сервер запускається на `http://localhost:8765`
+Вставте в файл такий вміст:
 
-3. Відкрийте цю адресу в браузері на будь-якому пристрої в одній мережі.
+```ini
+[Unit]
+Description=Advanced WebSocket Player
+After=network.target
 
-### Автозапуск (Linux)
+[Service]
+Type=simple
+WorkingDirectory=/шлях/до/проєкту
+ExecStart=/шлях/до/venv/bin/python /шлях/до/вашого/проєкту/main.py
+Restart=always
+Environment=PATH=/шлях/до/venv/bin
 
-Створіть systemd user unit:
-`~/.config/systemd/user/adv-ws-player.service`
+[Install]
+WantedBy=default.target
+```
 
+Замініть `/шлях/до/проєкту` на реальний шлях.
+
+### Активація автозапуску
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now adv-ws-player.service
+```
+
+---
+
+**Готово!** Після виконання цих кроків проєкт повинен запуститися. Якщо виникнуть проблеми — перевірте, чи всі файли (`mpv.com`, `ffmpeg.exe`) знаходяться в корені проєкту, та чи активоване віртуальне середовище.
 ---
 
 ## Як користуватися
@@ -99,7 +177,7 @@ python main.py
 
 ### Керування
 
-- Кнопки в веб-інтерфейсі: Play/Pause, Next, Stop
+- Кнопки в веб-інтерфейсі: Play/Pause, Next, Stop, Shuffle
 - Системні медіа-клавіші та програми (KDE Connect, polybar, media keys тощо)
 
 ### Логи
