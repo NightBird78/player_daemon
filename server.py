@@ -1,5 +1,6 @@
 import json
 import asyncio
+import socket
 import aiohttp
 from aiohttp import web
 from pathlib import Path
@@ -237,6 +238,15 @@ async def handle_index(request):
 
 
 # ==================== ЗАПУСК СЕРВЕРА ====================
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        local_ip = "127.0.0.1"
+    return local_ip
 
 
 async def start_server(player):
@@ -249,4 +259,6 @@ async def start_server(player):
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
-    print(f"Сервер запущено на порту {PORT}")
+
+    IP = get_local_ip()
+    print(f"Сервер запущено на http://{IP}:{PORT}")
