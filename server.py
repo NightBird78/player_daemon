@@ -34,7 +34,6 @@ async def ws_broadcast(data, exclude=None, only=None):
         try:
             await ws.send_json(data)
         except:
-            print("except error")
             connected_clients.discard(ws)
 
 
@@ -104,7 +103,6 @@ async def process_playlist(url: str, player, ws):
     """Завантаження плейлиста в фоні"""
     try:
         update = True
-
         async for item_url in utils.stream_links_async(url):
             await player.add_passive(item_url)
             if len(player.queue.passive_queue) % 200 == 0:
@@ -153,7 +151,6 @@ async def websocket_handler(request):
                     player,
                     "warning",
                     {"warning": "cannot add playlist in active"},
-                    _only=True,
                 )
                 continue
 

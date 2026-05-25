@@ -100,6 +100,9 @@ def sync_worker(url, queue, loop):
 
     for line in process.stdout:
         link = line.strip()
+        if link == "NA":
+            loop.call_soon_threadsafe(queue.put_nowait, url)
+            break
         if link:
             loop.call_soon_threadsafe(queue.put_nowait, link)
 
