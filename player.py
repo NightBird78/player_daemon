@@ -9,7 +9,8 @@ def create_player():
 
     match sys.platform:
         case "win32":
-            loop = asyncio.new_event_loop()
+            policy = asyncio.WindowsProactorEventLoopPolicy()
+            loop = policy.new_event_loop()
             from smtc_player import SMTCPlayer
 
             return SMTCPlayer(loop), loop
@@ -22,7 +23,6 @@ def create_player():
 
             player = MPRISPlayer()
             bus = SessionBus()
-            # bus.publish("org.mpris.MediaPlayer2.python_player", player)
             bus.publish(
                 "org.mpris.MediaPlayer2.python_player",
                 ("/org/mpris/MediaPlayer2", player),
@@ -31,13 +31,3 @@ def create_player():
             return player, asyncio.new_event_loop()
         case _:
             raise OSError(f"Платформа {sys.platform} не підтримується")
-
-
-# Приклад ініціалізації
-# player = create_player()
-
-# Якщо це Linux, реєструємо в DBus
-# if sys.platform.startswith("linux"):
-# from pydbus import SessionBus
-
-# bus = SessionBus()

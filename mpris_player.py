@@ -1,15 +1,11 @@
-import subprocess
-from collections import deque
 from gi.repository import GLib
 from pydbus.generic import signal
-from mpv_ipc import MPV
 from base_player import BasePlayer
-from utils import fetch_metadata
-from config import MPRIS_SOCKET, IDENTITY, cleanup_socket
+from config import MPRIS_SOCKET, IDENTITY
 import asyncio
 
 
-class MPRISPlayer:
+class MPRISPlayer(BasePlayer):
     PropertiesChanged = signal()
 
     dbus = """
@@ -33,17 +29,9 @@ class MPRISPlayer:
     """
 
     def __init__(self):
-        # super().__init__()
-        self.mpv = MPV(MPRIS_SOCKET)
-        self.proc = None
-        self.active_queue = deque()
-        self.passive_queue = deque()
-        self.active_index = -1
-        self.passive_index = -1
-        self.mode = "passive"
+        super().__init__(MPRIS_SOCKET)
         # state
         self.Identity = IDENTITY
-        self.PlaybackStatus = "Stopped"
         self.CanGoNext = False
         self.CanPlay = True
         self.CanPause = True
@@ -52,14 +40,19 @@ class MPRISPlayer:
             "xesam:artist": GLib.Variant("as", ["queue"]),
         }
 
-    def _update_mpris_metadata(self, meta, additional: dict = {}):
-        self.Metadata["xesam:title"] = GLib.Variant("s", meta["title"])
-        self.Metadata["xesam:artist"] = GLib.Variant("as", meta["artist"])
+    def update_widget(self, meta, additional: dict = {}, **kw):
+        self.set_meta(meta["title"], meta["artist"])
         self.PropertiesChanged(
             "org.mpris.MediaPlayer2.Player",
             {"Metadata": self.Metadata} | additional,
             [],
         )
+
+    def set_meta(self, title, artist):
+        if isinstance(artist, list):
+            artist = artist[0]
+        self.Metadata["xesam:title"] = GLib.Variant("s", title)
+        self.Metadata["xesam:artist"] = GLib.Variant("as", [artist])
 
     def get_meta(self):
         return {
@@ -67,131 +60,23 @@ class MPRISPlayer:
             "artist": self.Metadata["xesam:artist"].unpack(),
         }
 
-    def play_current(self):
-        url = (
-            self.active_queue[self.active_index]
-            if self.mode == "active"
-            else self.passive_queue[self.passive_index]
-        )
-        meta = fetch_metadata(url)
-
-        if not self.proc:
-            cleanup_socket(MPRIS_SOCKET)
-            self.proc = subprocess.Popen(
-                ["mpv", "--no-video", f"--input-ipc-server={MPRIS_SOCKET}", url]
-            )
-        else:
-            self.mpv.send({"command": ["loadfile", url, "replace"]})
-
-        self.PlayPause(broadcast=False)
-        self._update_mpris_metadata(meta, {"CanGoNext": True})
-
     # =========================
     # Navigation
     # =========================
-    def Next(self, *, ws_client=None):
-        if self.PlaybackStatus == "Playing":
-            self.PlayPause(broadcast=False)
-
-        self.Metadata["xesam:title"] = GLib.Variant("s", "loading")
-        self.Metadata["xesam:artist"] = GLib.Variant("as", ["loading"])
-        self.PropertiesChanged(
-            "org.mpris.MediaPlayer2.Player",
-            {
-                "Metadata": self.Metadata,
-                "CanGoNext": False,
-                # "PlayBackStatus": self.PlaybackStatus,
-            },
-            [],
-        )
-        if self.mode == "active":
-            if self.active_index + 1 < len(self.active_queue):
-                self.active_index += 1
-                self.play_current()
-
-                asyncio.create_task(
-                    self.broadcast_state(
-                        "Next",
-                        ws_client=ws_client,
-                        additional={"current": self.active_queue[self.active_index]},
-                    ),
-                )
-            else:
-                self.active_queue.clear()
-                self.active_index = -1
-
-                if self.passive_queue:
-                    self.mode = "passive"
-                    self.Next()
-                else:
-                    self.Stop(ws_client=ws_client)
-
-        else:
-            if self.passive_index + 1 < len(self.passive_queue):
-                self.passive_index += 1
-                self.play_current()
-
-                asyncio.create_task(
-                    self.broadcast_state(
-                        "Next",
-                        ws_client=ws_client,
-                        additional={"current": self.passive_queue[self.passive_index]},
-                    ),
-                )
-            else:
-                self.Stop()
+    def Next(self):
+        asyncio.create_task(self.async_next())
 
     # =========================
     # Controls
     # =========================
-    def PlayPause(self, *, ws_client=None, broadcast: bool = True):
-        if len(self.active_queue) == 0 and len(self.passive_queue) == 0:
-            return
-
-        self.mpv.send({"command": ["cycle", "pause"]})
-
-        self.PlaybackStatus = (
-            "Paused" if self.PlaybackStatus == "Playing" else "Playing"
-        )
-
-        self.PropertiesChanged(
-            "org.mpris.MediaPlayer2.Player",
-            {"PlaybackStatus": self.PlaybackStatus, "CanGoNext": True},
-            [],
-        )
-
-        asyncio.create_task(
-            self.broadcast_state("PlayPause", ws_client=ws_client, broadcast=broadcast)
-        )
+    def PlayPause(self):
+        asyncio.create_task(self.async_play_pause())
 
     def Stop(self, *, ws_client=None):
-        self.mpv.send({"command": ["quit"]})
-        self.PlaybackStatus = "Stopped"
-
-        self.Metadata["xesam:title"] = GLib.Variant("s", "wait for")
-        self.Metadata["xesam:artist"] = GLib.Variant("as", ["queue"])
-
-        self.PropertiesChanged(
-            "org.mpris.MediaPlayer2.Player",
-            {
-                "PlaybackStatus": self.PlaybackStatus,
-                "CanGoNext": False,
-                "Metadata": self.Metadata,
-            },
-            [],
-        )
-
-        self.active_queue.clear()
-        self.passive_queue.clear()
-
-        self.active_index = -1
-        self.passive_index = -1
-
-        asyncio.create_task(self.broadcast_state("PlayPause", ws_client=ws_client))
+        asyncio.create_task(self.async_stop())
 
     def Raise(self):
         pass
 
     def Quit(self):
-        self.Stop()
-        # loop.quit()
+        asyncio.create_task(self.async_stop())

@@ -1,40 +1,40 @@
-import asyncio
-
-# import gbulb
-# from pydbus import SessionBus
-
-# from player_core import Player
 from server import start_server, ws_broadcast
 from player import create_player
 
-# gbulb.install()
 
+async def event_processor(player):
+    print("Event-driven процесор MPV запущено.")
+    last_percent = -1
 
-async def poll_proc(player):
     while True:
-        await asyncio.sleep(5)
+        event = await player.mpv.event_queue.get()
+
         if not player.proc:
             continue
-        if player.proc.poll() is None:
-            await ws_broadcast(
-                {
-                    "type": "process",
-                    "percent": player.mpv.get_property("percent-pos"),
-                }
-            )
-            continue
-        player.proc = None
-        if player.PlaybackStatus == "Stopped":
-            continue
 
-        player.Next()
+        if event["type"] == "percent_changed":
+            current_percent = int(event["value"])
+
+            if current_percent != last_percent:
+                last_percent = current_percent
+                await ws_broadcast(
+                    {
+                        "type": "process",
+                        "percent": current_percent,
+                    }
+                )
+
+        elif event["type"] == "track_ended":
+            if player.PlaybackStatus == "Stopped":
+                continue
+            await player.async_next()
 
 
 if __name__ == "__main__":
     player, loop = create_player()
 
     loop.create_task(start_server(player))
-    loop.create_task(poll_proc(player))
+    loop.create_task(event_processor(player))
 
     try:
         loop.run_forever()
