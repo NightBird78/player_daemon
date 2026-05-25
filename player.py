@@ -9,7 +9,8 @@ def create_player():
 
     match sys.platform:
         case "win32":
-            loop = asyncio.new_event_loop()
+            policy = asyncio.WindowsProactorEventLoopPolicy()
+            loop = policy.new_event_loop()
             from smtc_player import SMTCPlayer
 
             return SMTCPlayer(loop), loop

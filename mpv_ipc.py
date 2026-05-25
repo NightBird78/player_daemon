@@ -20,9 +20,25 @@ class MPV:
     async def connect(self):
         """Асинхронне підключення."""
         if sys.platform == "win32":
-            self.reader, self.writer = await asyncio.open_connection(
-                pipe=self.socket_path
+            loop = asyncio.get_running_loop()
+
+            if not isinstance(loop, asyncio.ProactorEventLoop):
+                raise RuntimeError("needs ProactorEventLoop for named pipes")
+            reader = asyncio.StreamReader(loop=loop)
+
+            protocol_factory = lambda: asyncio.StreamReaderProtocol(
+                reader,
+                loop=loop
             )
+
+            transport, protocol = await loop.create_pipe_connection(
+                protocol_factory,
+                self.socket_path
+            )
+
+            self.reader = reader
+            self.writer = asyncio.StreamWriter(transport, protocol, reader, loop)
+
         else:
             self.reader, self.writer = await asyncio.open_unix_connection(
                 self.socket_path
