@@ -2,6 +2,7 @@ import json
 from mutagen.easyid3 import EasyID3
 import asyncio
 import os
+import sys
 import time
 from yt_dlp import YoutubeDL
 import subprocess
@@ -84,7 +85,9 @@ def sync_worker(url, queue, loop):
     env["PYTHONUNBUFFERED"] = "1"
 
     cmd = [
-        "yt-dlp",
+        sys.executable,
+        "-m",
+        "yt_dlp",
         "--flat-playlist",
         "--no-warnings",
         "--lazy-playlist",
@@ -159,7 +162,9 @@ async def fetch_metadata(url):
                 u = cache[url]
                 return {"title": u["title"], "artist": u["artist"]}
         process = await asyncio.create_subprocess_exec(
-            "yt-dlp",
+            sys.executable,
+            "-m",
+            "yt_dlp",
             "-J",
             url,
             stdout=asyncio.subprocess.PIPE,

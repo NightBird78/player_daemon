@@ -56,7 +56,7 @@
 # Створення venv
 python3 -m venv venv
 
-# Активація (Linux / macOS)
+# Активація (Linux)
 source venv/bin/activate
 
 # Активація (Windows)
@@ -142,14 +142,17 @@ nano ~/.config/systemd/user/adv-ws-player.service
 ```ini
 [Unit]
 Description=Advanced WebSocket Player
-After=network.target
+After=network-online.target pipewire.service pulseaudio.service
+Wants=network-online.target
 
 [Service]
 Type=simple
+
 WorkingDirectory=/шлях/до/проєкту
+Environment="PATH=/шлях/до/venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=/шлях/до/venv/bin/python /шлях/до/вашого/проєкту/main.py
+
 Restart=always
-Environment=PATH=/шлях/до/venv/bin
 
 [Install]
 WantedBy=default.target
