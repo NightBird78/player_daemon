@@ -179,9 +179,10 @@ class BasePlayer(ABC):
         is_active = self.queue.current_mode == "active"
         if not is_active and self.PlaybackStatus == "Playing":
             await self.async_play_pause(broadcast=False)
-
         self.queue.shuffle_passive()
         self.queue.queue_list.clear()
+
+        self.set_meta("loading", "loading")
 
         if not is_active:
             await self.async_next(broadcast=False)
@@ -208,6 +209,11 @@ class BasePlayer(ABC):
         )
 
     async def play_current(self):
+        await self.broadcast_state(
+            "queue",
+            type="update",
+            update_queue=False,
+        )
         url = self.queue.get_current_url()
         if not url:
             return

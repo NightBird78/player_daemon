@@ -184,8 +184,10 @@ async def websocket_handler(request):
                 continue
             elif action == "stop":
                 await player.async_stop(ws_client=ws)
+                continue
             elif action == "shuffle":
                 await player.async_shuffle(ws_client=ws)
+                continue
 
         elif cmd == "queue_action":
             action = data["action"]
