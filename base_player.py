@@ -179,9 +179,16 @@ class BasePlayer(ABC):
         is_active = self.queue.current_mode == "active"
         if not is_active and self.PlaybackStatus == "Playing":
             await self.async_play_pause(broadcast=False)
-
         self.queue.shuffle_passive()
         self.queue.queue_list.clear()
+
+        self.set_meta("loading", "loading")
+        await self.broadcast_state(
+            "queue",
+            type="update",
+            ws_client=ws_client,
+            update_queue=False,
+        )
 
         if not is_active:
             await self.async_next(broadcast=False)
