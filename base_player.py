@@ -183,12 +183,6 @@ class BasePlayer(ABC):
         self.queue.queue_list.clear()
 
         self.set_meta("loading", "loading")
-        await self.broadcast_state(
-            "queue",
-            type="update",
-            ws_client=ws_client,
-            update_queue=False,
-        )
 
         if not is_active:
             await self.async_next(broadcast=False)
@@ -215,6 +209,11 @@ class BasePlayer(ABC):
         )
 
     async def play_current(self):
+        await self.broadcast_state(
+            "queue",
+            type="update",
+            update_queue=False,
+        )
         url = self.queue.get_current_url()
         if not url:
             return
