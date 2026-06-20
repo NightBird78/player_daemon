@@ -18,6 +18,8 @@ mock_modules = [
     "winsdk",
     "winsdk.windows.media",
     "winsdk.windows.media.playback",
+    "yt_dlp",
+    "mutagen.easyid3",
 ]
 for mod_name in mock_modules:
     sys.modules[mod_name] = MagicMock()
@@ -78,6 +80,12 @@ def player(request, mocker):
 def mock_fetch():
     with patch("utils.fetch_metadata", new_callable=AsyncMock) as m:
         m.return_value = {"title": "Test Song", "artist": ["Test Artist"]}
+        yield m
+
+
+@pytest.fixture(autouse=True)
+def shutil_patch():
+    with patch("base_player.shutil.which", new_callable=MagicMock) as m:
         yield m
 
 
