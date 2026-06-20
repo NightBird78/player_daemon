@@ -7,7 +7,9 @@ from pathlib import Path
 import mimetypes
 from config import PORT, LOCAL_DIR
 import utils
+from logger import setup_logger
 
+log = setup_logger("server")
 # ==================== ГЛОБАЛЬНІ ЗМІННІ ====================
 
 connected_clients = set()
@@ -97,7 +99,7 @@ async def process_local_files(player, ws):
         await send_response(ws, player, "Loading", update_queue=update)
 
     except Exception as e:
-        print(f"Помилка завантаження локальних файлів: {e}")
+        log.error(f"Помилка завантаження локальних файлів: {e}")
 
 
 async def process_playlist(url: str, player, ws):
@@ -114,7 +116,7 @@ async def process_playlist(url: str, player, ws):
 
         await send_response(ws, player, "Loading", update_queue=update)
     except Exception as e:
-        print(f"Помилка завантаження плейлиста: {e}")
+        log.error(f"Помилка завантаження плейлиста: {e}")
 
 
 # ==================== WEBSOCKET HANDLER ====================
@@ -263,4 +265,4 @@ async def start_server(player):
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
 
     IP = get_local_ip()
-    print(f"Сервер запущено на http://{IP}:{PORT}")
+    log.info(f"Сервер запущено на http://{IP}:{PORT}")

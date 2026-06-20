@@ -11,6 +11,7 @@ import yt_dlp
 from pathlib import Path
 from queue_manager import QueueManager
 import sys
+from logger import setup_logger
 
 
 class BasePlayer(ABC):
@@ -24,10 +25,15 @@ class BasePlayer(ABC):
         self.PlaybackStatus = "Stopped"
         self.Metadata = {"title": "wait for", "artist": ["queue"]}
 
+        self.current_retry = 0
+        self.max_retry = 3
+
+        self.log = setup_logger("player")
+
         exists_mpv = shutil.which("mpv")
         if not exists_mpv:
             raise OSError("mpv is not found in system and/or in PATH")
-        print(f"found mpv:        {exists_mpv}")
+        self.log.info(f"found mpv: {exists_mpv}")
         self.mpv_wrapper = exists_mpv
 
         exists_dlp = shutil.which("yt-dlp")
@@ -36,7 +42,7 @@ class BasePlayer(ABC):
             dlp = Path(exists_dlp)
             if not dlp.exists():
                 raise OSError("yt-dlp is not found in system and/or in PATH")
-        print(f"found youtube-dl: {exists_dlp}")
+        self.log.info(f"found youtube-dl: {exists_dlp}")
         self.yt_dlp_path = exists_dlp
 
     async def broadcast_state(
@@ -83,7 +89,7 @@ class BasePlayer(ABC):
                 if meta is None:
                     errors = True
                     self.queue.remove_corrupted_url(e["url"])
-                    print(f"WARN: Found error-link {e['url']}")
+                    self.log.warning(f"WARN: Found error-link {e['url']}")
                     continue
                 self.queue.queue_list.append(e | meta)
 
@@ -118,7 +124,7 @@ class BasePlayer(ABC):
         timeout = 5.0
         start_time = asyncio.get_running_loop().time()
 
-        print("Очікування ініціалізації IPC сокету MPV...")
+        self.log.info("Очікування ініціалізації IPC сокету MPV...")
 
         while True:
             if sys.platform == "win32":
@@ -143,11 +149,11 @@ class BasePlayer(ABC):
 
             await asyncio.sleep(0.05)
 
-        print("MPV успішно піднято IPC-сервер! Підключення...")
+        self.log.info("MPV успішно піднято IPC-сервер! Підключення...")
         try:
             await self.mpv.connect()
         except Exception as e:
-            print("error while 'await self.mpv.connect()'", e)
+            self.log.error("error while 'await self.mpv.connect()'", e)
 
     def get_current_url(self):
         return self.queue.get_current_url()
@@ -226,10 +232,35 @@ class BasePlayer(ABC):
                 await self.init_mpv(url)
             else:
                 await self.mpv.send({"command": ["loadfile", url, "replace"]})
+            try:
+                event = await asyncio.wait_for(
+                    self._wait_for_event(["file_loaded", "idle"]), timeout=5.0
+                )
+                if event.get("type") == "idle":
+                    self.log.warning("file load problem, retrying")
+                    self.current_retry += 1
+                    if self.current_retry > self.max_retry:
+                        self.current_retry = 0
+                        self.log.warning("reached retry limit, switch to next")
+                        return await self.async_next()
+                    else:
+                        self.log.warning(f"try to play: try {self.current_retry}")
+                        return await self.play_current()
+            except asyncio.TimeoutError:
+                self.log.warning("file load timeout, retrying")
+                self.current_retry += 1
+                if self.current_retry > self.max_retry:
+                    self.current_retry = 0
+                    self.log.warning("reached retry limit, switch to next")
+                    return await self.async_next()
+                else:
+                    self.log.warning(f"try to play: try {self.current_retry}")
+                    return await self.play_current()
+            self.current_retry = 0
             await self.async_play_pause(broadcast=False)
             self.update_widget(meta=meta, additional={"CanGoNext": True})
         except Exception as e:
-            print(f"an error in play_current {e}")
+            self.log.error(f"an error in play_current {e}")
 
     async def async_next(self, *, broadcast=True, ws_client=None, count=1):
         if self.PlaybackStatus == "Playing":
@@ -272,6 +303,17 @@ class BasePlayer(ABC):
         self.queue.clear()
 
         await self.broadcast_state("Stop/End", ws_client=ws_client, broadcast=broadcast)
+
+    async def _wait_for_event(self, event_types, *, timeout=5.0):
+        try:
+            while True:
+                event = await asyncio.wait_for(self.mpv.event_queue.get(), timeout)
+                if event.get("type") in event_types:
+                    self.log.debug(f"returning event by {event.get('type')}")
+                    return event
+                await self.mpv.event_queue.put(event)
+        except asyncio.TimeoutError:
+            raise
 
     @abstractmethod
     def get_meta(self):
