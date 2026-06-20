@@ -7,6 +7,9 @@ import time
 from yt_dlp import YoutubeDL
 import subprocess
 import concurrent.futures
+from logger import setup_logger
+
+log = setup_logger("utils")
 
 
 async def search(text):
@@ -46,7 +49,7 @@ async def search(text):
                 return results
 
             except Exception as e:
-                print(f"Помилка пошуку: {e}")
+                log.error(f"Помилка пошуку: {e}")
                 return []
 
     return await asyncio.to_thread(find)

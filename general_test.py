@@ -18,6 +18,8 @@ mock_modules = [
     "winsdk",
     "winsdk.windows.media",
     "winsdk.windows.media.playback",
+    "yt_dlp",
+    "mutagen.easyid3",
 ]
 for mod_name in mock_modules:
     sys.modules[mod_name] = MagicMock()
@@ -69,6 +71,7 @@ def player(request, mocker):
     p = MPRISPlayer() if request.param == "linux" else SMTCPlayer(None)
     p.mpv = MagicMock()
     p.mpv.send = AsyncMock(return_value={"error": "success"})
+    p.mpv.event_queue.get = AsyncMock(return_value={"type": "file_loaded"})
     p.init_mpv = AsyncMock()
     return p
 
@@ -77,6 +80,12 @@ def player(request, mocker):
 def mock_fetch():
     with patch("utils.fetch_metadata", new_callable=AsyncMock) as m:
         m.return_value = {"title": "Test Song", "artist": ["Test Artist"]}
+        yield m
+
+
+@pytest.fixture(autouse=True)
+def shutil_patch():
+    with patch("base_player.shutil.which", new_callable=MagicMock) as m:
         yield m
 
 
@@ -323,10 +332,12 @@ async def test_ws_shuffle_passive(mock_shuffle, player, ws_manager):
     await ws_manager.ws.send_json({"cmd": "control", "action": "shuffle"})
 
     response = await ws_manager.wait_for_type("response")
-    resp_loading = await ws_manager.wait_for_type("update")
+    resp_loading_1 = await ws_manager.wait_for_type("update")
+    resp_loading_2 = await ws_manager.wait_for_type("update")
 
     assert response["passive_index"] == 0
-    assert len(resp_loading["queue"]) == 2
+    assert len(resp_loading_1["queue"]) == 0
+    assert len(resp_loading_2["queue"]) == 2
 
     assert list(player.queue.passive_queue) == expected_result
 
@@ -377,11 +388,15 @@ async def test_ws_shuffle_passive_switch_active(mock_shuffle, player, ws_manager
     await ws_manager.ws.send_json({"cmd": "control", "action": "shuffle"})
 
     response = await ws_manager.wait_for_type("response")
-    resp_loading = await ws_manager.wait_for_type("update")
+    resp_loading_1 = await ws_manager.wait_for_type("update")
+    resp_loading_2 = await ws_manager.wait_for_type("update")
+
+    print(player.queue.passive_queue)
 
     assert response["passive_index"] == -1
     assert response["active_index"] == 0
-    assert len(resp_loading["queue"]) == 3
+    assert len(resp_loading_1["queue"]) == 0
+    assert len(resp_loading_2["queue"]) == 3
 
     assert list(player.queue.passive_queue) == expected_result
 

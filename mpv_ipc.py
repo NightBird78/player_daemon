@@ -2,6 +2,7 @@ import asyncio
 import json
 import sys
 import time
+from logger import setup_logger
 
 
 class MPVError(Exception):
@@ -17,6 +18,8 @@ class MPV:
         self.reader_task = None
         self.event_queue = asyncio.Queue()
 
+        self.log = setup_logger("mpv")
+
     async def connect(self):
         """Асинхронне підключення."""
         if sys.platform == "win32":
@@ -26,14 +29,10 @@ class MPV:
                 raise RuntimeError("needs ProactorEventLoop for named pipes")
             reader = asyncio.StreamReader(loop=loop)
 
-            protocol_factory = lambda: asyncio.StreamReaderProtocol(
-                reader,
-                loop=loop
-            )
+            protocol_factory = lambda: asyncio.StreamReaderProtocol(reader, loop=loop)
 
             transport, protocol = await loop.create_pipe_connection(
-                protocol_factory,
-                self.socket_path
+                protocol_factory, self.socket_path
             )
 
             self.reader = reader
@@ -75,17 +74,24 @@ class MPV:
                     elif response.get("event") == "end-file":
                         if response.get("reason") == "eof":
                             await self.event_queue.put({"type": "track_ended"})
-
+                    elif response.get("event") == "file-loaded":
+                        await self.event_queue.put({"type": "file_loaded"})
+                    elif response.get("event") == "idle":
+                        await self.event_queue.put({"type": "idle"})
+                    # elif response.get("event") == "start-file":
+                    # await self.event_queue.put({"type": "start_file"})
+                    else:
+                        self.log.debug(response)
                 except json.JSONDecodeError:
                     continue
         except Exception as e:
-            print(f"Reader Error: {e}")
+            self.log.error(f"Reader Error: {e}")
 
     async def send(self, cmd):
         """Абсолютно безпечний асинхронний виклик."""
         try:
             if not self.writer:
-                print("writer is none")
+                self.log.warning("writer is none")
                 await self.connect()
 
             req_id = int(time.time() * 1000000)
@@ -102,12 +108,12 @@ class MPV:
 
                 return await future
             except Exception as e:
-                print(f"Async Send Error: {e}")
+                self.log.error(f"Async Send Error: {e}")
                 return None
             finally:
                 self.pending_requests.pop(req_id, None)
         except Exception as e:
-            print("error in send", e)
+            self.log.error("error in send", e)
 
     async def get_property(self, prop):
         res = await self.send({"command": ["get_property", prop]})
