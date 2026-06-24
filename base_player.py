@@ -28,6 +28,10 @@ class BasePlayer(ABC):
         self.current_retry = 0
         self.max_retry = 3
 
+        self.steps = 15
+        self.sleep_time = 1 / self.steps
+        self.max_volume = 50
+
         self.log = setup_logger("player")
 
         exists_mpv = shutil.which("mpv")
@@ -113,10 +117,11 @@ class BasePlayer(ABC):
                 self.mpv_wrapper,
                 f"--script-opts=ytdl_hook-ytdl_path={self.yt_dlp_path}",
                 "--no-video",
+                "--pause",
                 f"--input-ipc-server={self.socket}",
-                "--volume=50",
+                "--volume=0",
                 "--idle=yes",
-                "--msg-level=all=no",
+                "--msg-level=all=debug",
                 url,
             ]
         )
@@ -174,6 +179,9 @@ class BasePlayer(ABC):
     async def add_passive(self, item):
         should_play = self.queue.add_passive(item)
         if should_play and self.PlaybackStatus != "Playing":
+            self.set_meta("loading", "loading")
+            self.update_widget(meta=self.get_meta(), additional={"CanGoNext": False})
+            self.PlaybackStatus = "Paused"
             await self.play_current()
 
     async def set_passive_queue(self, items):
@@ -200,10 +208,43 @@ class BasePlayer(ABC):
             return
         should_pause = self.PlaybackStatus == "Playing"
 
-        res = await self.mpv.send({"command": ["set_property", "pause", should_pause]})
-        if res is dict and res.get("error") and res.get("error") != "success":
-            raise MPVError(f"Не вдалося змінити стан паузи: {res.get('error')}")
+        if not should_pause:
+            # --- UNPAUSE (FADE-IN) ---
+            await self.mpv.send({"command": ["set_property", "volume", 0]})
 
+            res = await self.mpv.send({"command": ["set_property", "pause", False]})
+            if (
+                isinstance(res, dict)
+                and res.get("error")
+                and res.get("error") != "success"
+            ):
+                raise MPVError(f"Не вдалося зняти з паузи: {res.get('error')}")
+
+            for i in range(1, self.steps + 1):
+                current_vol = int((i / self.steps) * self.max_volume)
+                await self.mpv.send(
+                    {"command": ["set_property", "volume", current_vol]}
+                )
+                await asyncio.sleep(self.sleep_time)
+
+        else:
+            # --- PAUSE (FADE-OUT) ---
+            for i in range(self.steps, -1, -1):
+                current_vol = int((i / self.steps) * self.max_volume)
+                await self.mpv.send(
+                    {"command": ["set_property", "volume", current_vol]}
+                )
+                await asyncio.sleep(self.sleep_time)
+
+            res = await self.mpv.send({"command": ["set_property", "pause", True]})
+            if (
+                isinstance(res, dict)
+                and res.get("error")
+                and res.get("error") != "success"
+            ):
+                raise MPVError(f"Не вдалося поставити на паузу: {res.get('error')}")
+
+            await self.mpv.send({"command": ["set_property", "volume", 50]})
         self.PlaybackStatus = "Paused" if should_pause else "Playing"
 
         self.update_widget(
@@ -257,6 +298,7 @@ class BasePlayer(ABC):
                     self.log.warning(f"try to play: try {self.current_retry}")
                     return await self.play_current()
             self.current_retry = 0
+            await self._wait_for_event(["playback_restart"], timeout=0)
             await self.async_play_pause(broadcast=False)
             self.update_widget(meta=meta, additional={"CanGoNext": True})
         except Exception as e:
@@ -307,7 +349,11 @@ class BasePlayer(ABC):
     async def _wait_for_event(self, event_types, *, timeout=5.0):
         try:
             while True:
-                event = await asyncio.wait_for(self.mpv.event_queue.get(), timeout)
+                if timeout > 0:
+                    event = await asyncio.wait_for(self.mpv.event_queue.get(), timeout)
+                else:
+                    event = await self.mpv.event_queue.get()
+                    await asyncio.sleep(0.5)
                 if event.get("type") in event_types:
                     self.log.debug(f"returning event by {event.get('type')}")
                     return event

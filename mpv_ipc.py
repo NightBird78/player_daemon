@@ -78,10 +78,12 @@ class MPV:
                         await self.event_queue.put({"type": "file_loaded"})
                     elif response.get("event") == "idle":
                         await self.event_queue.put({"type": "idle"})
+                    elif response.get("event") == "playback-restart":
+                        await self.event_queue.put({"type": "playback_restart"})
                     # elif response.get("event") == "start-file":
                     # await self.event_queue.put({"type": "start_file"})
                     else:
-                        self.log.debug(response)
+                        self.log.info(response)
                 except json.JSONDecodeError:
                     continue
         except Exception as e:
