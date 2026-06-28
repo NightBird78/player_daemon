@@ -16,7 +16,10 @@ connected_clients = set()
 buckets = {}
 DEBOUNCE_TIME = 0.5
 
+background_tasks = set()
+lock = asyncio.Lock()
 
+yt_lock = asyncio.Lock()
 # ==================== ДОПОМІЖНІ ФУНКЦІЇ ====================
 
 
@@ -60,12 +63,20 @@ async def delayed_next(cmd: str, player, ws):
     """Debounce для кнопки Next"""
     try:
         await asyncio.sleep(DEBOUNCE_TIME)
-        bucket = buckets.get(cmd)
-        if bucket:
-            await player.async_next(ws_client=ws, count=bucket["count"])
-            buckets.pop(cmd, None)
+        async with lock:
+            bucket = buckets.get(cmd)
+            if bucket:
+                await player.async_next(ws_client=ws, count=bucket["count"])
+                buckets.pop(cmd, None)
     except asyncio.CancelledError:
         pass
+
+
+async def debounce(funk, *args, **kwargs):
+    if lock.locked():
+        return
+    async with lock:
+        await funk(*args, **kwargs)
 
 
 async def process_local_files(player, ws):
@@ -88,7 +99,7 @@ async def process_local_files(player, ws):
             if not mime_type or not mime_type.startswith("audio/"):
                 continue
 
-            await player.add_passive(str(item.absolute()))
+            await player.add_passive(str(item.absolute()), ws_client=ws)
 
             if len(player.queue.passive_queue) % 200 == 0:
                 await send_response(ws, player, "Loading", update_queue=update)
@@ -104,19 +115,20 @@ async def process_local_files(player, ws):
 
 async def process_playlist(url: str, player, ws):
     """Завантаження плейлиста в фоні"""
-    try:
-        update = True
-        async for item_url in utils.stream_links_async(url):
-            await player.add_passive(item_url)
-            if len(player.queue.passive_queue) % 200 == 0:
-                await send_response(ws, player, "Loading", update_queue=update)
-                update = False
-            elif len(player.queue.passive_queue) % 10 == 0:
-                await asyncio.sleep(0.05)
+    async with yt_lock:
+        try:
+            update = True
+            async for item_url in utils.stream_links_async(url):
+                await player.add_passive(item_url, ws_client=ws)
+                if len(player.queue.passive_queue) % 200 == 0:
+                    await send_response(ws, player, "Loading", update_queue=update)
+                    update = False
+                elif len(player.queue.passive_queue) % 10 == 0:
+                    await asyncio.sleep(0.05)
 
-        await send_response(ws, player, "Loading", update_queue=update)
-    except Exception as e:
-        log.error(f"Помилка завантаження плейлиста: {e}")
+            await send_response(ws, player, "Loading", update_queue=update)
+        except Exception as e:
+            log.error(f"Помилка завантаження плейлиста: {e}")
 
 
 # ==================== WEBSOCKET HANDLER ====================
@@ -128,8 +140,15 @@ async def websocket_handler(request):
     connected_clients.add(ws)
 
     player = request.app["player"]
-
-    await send_response(ws, player, "action", {"action": "init"})
+    await send_response(
+        ws,
+        player,
+        "action",
+        {
+            "action": "init",
+            "percent": (await player.mpv.get_property("percent-pos")) or 0,
+        },
+    )
 
     async for msg in ws:
         if msg.type != aiohttp.WSMsgType.TEXT:
@@ -146,16 +165,17 @@ async def websocket_handler(request):
         # ==================== КОМАНДИ ====================
 
         if cmd == "play":
-            success = await player.add_active(data["url"])
-            update_queue = success
-            if not success:
-                await send_response(
-                    ws,
-                    player,
-                    "warning",
-                    {"warning": "cannot add playlist in active"},
-                )
-                continue
+            async with lock:
+                success = await player.add_active(data["url"], ws_client=ws)
+                update_queue = success
+                if not success:
+                    await send_response(
+                        ws,
+                        player,
+                        "warning",
+                        {"warning": "cannot add playlist in active"},
+                    )
+                    continue
 
         elif cmd == "playlist":
             asyncio.create_task(process_playlist(data["url"], player, ws))
@@ -164,7 +184,7 @@ async def websocket_handler(request):
             asyncio.create_task(process_local_files(player, ws))
 
         elif cmd == "add":
-            await player.add_passive(data["url"])
+            await player.add_passive(data["url"], ws_client=ws)
 
         elif cmd == "control":
             action = data["action"]
@@ -182,13 +202,21 @@ async def websocket_handler(request):
                 continue
 
             elif action == "pause":
-                await player.async_play_pause(ws_client=ws)
+                task = asyncio.create_task(
+                    debounce(player.async_play_pause, ws_client=ws)
+                )
+                background_tasks.add(task)
+                task.add_done_callback(background_tasks.discard)
                 continue
             elif action == "stop":
-                await player.async_stop(ws_client=ws)
+                task = asyncio.create_task(debounce(player.async_stop, ws_client=ws))
+                background_tasks.add(task)
+                task.add_done_callback(background_tasks.discard)
                 continue
             elif action == "shuffle":
-                await player.async_shuffle(ws_client=ws)
+                task = asyncio.create_task(debounce(player.async_shuffle, ws_client=ws))
+                background_tasks.add(task)
+                task.add_done_callback(background_tasks.discard)
                 continue
 
         elif cmd == "queue_action":
@@ -263,6 +291,7 @@ async def start_server(player):
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
+    await player.init_mpv()
 
     IP = get_local_ip()
     log.info(f"Сервер запущено на http://{IP}:{PORT}")

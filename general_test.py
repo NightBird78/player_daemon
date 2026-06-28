@@ -73,6 +73,7 @@ def player(request, mocker):
     p.sleep_time = 0.05
     p.mpv = MagicMock()
     p.mpv.send = AsyncMock(return_value={"error": "success"})
+    p.mpv.get_property = AsyncMock(return_value=0)
     p.mpv.event_queue.get = AsyncMock(
         side_effect=[
             {"type": "file_loaded"},
@@ -183,6 +184,8 @@ async def test_ws_playpause(player, ws_manager):
     assert resp["type"] == "response"
     assert resp["status"] == "Paused"
 
+    await asyncio.sleep(0.5)  # wait until lock was free
+
     await ws_manager.ws.send_json({"cmd": "control", "action": "pause"})
 
     resp = await ws_manager.wait_for_type("response")
@@ -266,6 +269,7 @@ async def test_ws_multiple_plays_queue_management(player, ws_manager):
 
 @pytest.mark.asyncio
 async def test_ws_play_next(player, ws_manager):
+    server.buckets.clear()
     player.queue.active_queue = ["url1", "url2"]
     player.queue.active_index = 0
     player.queue.mode = "active"
@@ -274,10 +278,16 @@ async def test_ws_play_next(player, ws_manager):
 
     await ws_manager.ws.send_json({"cmd": "control", "action": "next"})
 
-    resp = await ws_manager.wait_for_type("response")
+    resp_1 = await ws_manager.wait_for_type("response")
+    assert resp_1["action"] == "pre_next"
 
-    assert resp["status"] == "Playing"
-    assert resp["active_index"] == 1
+    resp_2 = await ws_manager.wait_for_type("response")
+    assert resp_2["action"] == "Next"
+
+    resp_3 = await ws_manager.wait_for_type("action")
+    assert resp_3["action"] == "update"
+    assert resp_3["status"] == "Playing"
+    assert resp_3["active_index"] == 1
 
 
 @pytest.mark.asyncio
@@ -289,10 +299,13 @@ async def test_ws_eoq(player, ws_manager):
 
     await player.async_next()
 
-    resp = await ws_manager.wait_for_type("action")
+    resp_1 = await ws_manager.wait_for_type("action")
+    assert resp_1["action"] == "pre_next"
+    assert resp_1["status"] == "Loading"
 
-    assert resp["action"] == "Stop/End"
-    assert resp["status"] == "Stopped"
+    resp_2 = await ws_manager.wait_for_type("action")
+    assert resp_2["action"] == "Stop/End"
+    assert resp_2["status"] == "Stopped"
 
 
 @pytest.mark.asyncio
@@ -339,12 +352,12 @@ async def test_ws_shuffle_passive(mock_shuffle, player, ws_manager):
     await ws_manager.ws.send_json({"cmd": "control", "action": "shuffle"})
 
     response = await ws_manager.wait_for_type("response")
-    resp_loading_1 = await ws_manager.wait_for_type("update")
-    resp_loading_2 = await ws_manager.wait_for_type("update")
+    resp_loading = await ws_manager.wait_for_type("update")
 
-    assert response["passive_index"] == 0
-    assert len(resp_loading_1["queue"]) == 0
-    assert len(resp_loading_2["queue"]) == 2
+    assert response["status"] == "Loading"
+    assert response["passive_index"] == -1
+    assert len(resp_loading["queue"]) == 2
+    assert resp_loading["status"] == "Playing"
 
     assert list(player.queue.passive_queue) == expected_result
 
@@ -395,13 +408,11 @@ async def test_ws_shuffle_passive_switch_active(mock_shuffle, player, ws_manager
     await ws_manager.ws.send_json({"cmd": "control", "action": "shuffle"})
 
     response = await ws_manager.wait_for_type("response")
-    resp_loading_1 = await ws_manager.wait_for_type("update")
-    resp_loading_2 = await ws_manager.wait_for_type("update")
+    resp_loading = await ws_manager.wait_for_type("update")
 
     assert response["passive_index"] == -1
-    assert response["active_index"] == 0
-    assert len(resp_loading_1["queue"]) == 0
-    assert len(resp_loading_2["queue"]) == 3
+    assert response["active_index"] == -1
+    assert len(resp_loading["queue"]) == 3
 
     assert list(player.queue.passive_queue) == expected_result
 

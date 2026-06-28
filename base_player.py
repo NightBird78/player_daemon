@@ -20,7 +20,7 @@ class BasePlayer(ABC):
         self.socket = socket
         self.proc = None
 
-        self.lock = asyncio.Lock()
+        self.updater_lock = asyncio.Lock()
         self.queue = QueueManager()
         self.PlaybackStatus = "Stopped"
         self.Metadata = {"title": "wait for", "artist": ["queue"]}
@@ -82,7 +82,7 @@ class BasePlayer(ABC):
                 asyncio.create_task(self._update_queue())
 
     async def _update_queue(self):
-        async with self.lock:
+        async with self.updater_lock:
             self.queue.queue_list.clear()
 
             queue_list_temp = self.queue.get_next_slots(NEXT_QUEUE_LEN)
@@ -98,7 +98,15 @@ class BasePlayer(ABC):
                 self.queue.queue_list.append(e | meta)
 
             if len(self.queue.queue_list) > 0:
-                await self.broadcast_state("queue", type="update")
+                await self.broadcast_state(
+                    "queue",
+                    type="update",
+                    additional={
+                        "status": "Loading"
+                        if self.get_meta()["title"] == "loading"
+                        else self.PlaybackStatus,
+                    },
+                )
             if errors:
                 asyncio.create_task(self._update_queue())
 
@@ -109,7 +117,7 @@ class BasePlayer(ABC):
         scripts_dir = os.path.join(os.path.dirname(site_packages_dir), "Scripts")
         return os.path.join(scripts_dir, "youtube-dl")
 
-    async def init_mpv(self, url):
+    async def init_mpv(self):
         cleanup_socket(self.socket)
 
         self.proc = subprocess.Popen(
@@ -121,8 +129,7 @@ class BasePlayer(ABC):
                 f"--input-ipc-server={self.socket}",
                 "--volume=0",
                 "--idle=yes",
-                "--msg-level=all=debug",
-                url,
+                "--msg-level=all=no",
             ]
         )
 
@@ -163,26 +170,33 @@ class BasePlayer(ABC):
     def get_current_url(self):
         return self.queue.get_current_url()
 
-    async def add_active(self, item):
+    async def add_active(self, item, *, ws_client=None):
         if await utils.is_playlist(item):
             return False
 
         should_play = self.queue.add_active(item)
         if should_play:
-            await self.play_current()
+            self.set_meta("loading", "loading")
+            self.update_widget(meta=self.get_meta(), additional={"CanGoNext": False})
+            self.PlaybackStatus = "Paused"
+            await self.play_current(
+                broadcast=ws_client is not None, ws_client=ws_client
+            )
         return True
 
     async def set_active_queue(self, items):
         self.queue.set_active_queue(items)
         await self.play_current()
 
-    async def add_passive(self, item):
+    async def add_passive(self, item, *, ws_client=None):
         should_play = self.queue.add_passive(item)
         if should_play and self.PlaybackStatus != "Playing":
             self.set_meta("loading", "loading")
             self.update_widget(meta=self.get_meta(), additional={"CanGoNext": False})
             self.PlaybackStatus = "Paused"
-            await self.play_current()
+            await self.play_current(
+                broadcast=ws_client is not None, ws_client=ws_client
+            )
 
     async def set_passive_queue(self, items):
         should_play = self.queue.set_passive_queue(items)
@@ -191,12 +205,16 @@ class BasePlayer(ABC):
 
     async def async_shuffle(self, *, ws_client=None):
         is_active = self.queue.current_mode == "active"
-        if not is_active and self.PlaybackStatus == "Playing":
-            await self.async_play_pause(broadcast=False)
         self.queue.shuffle_passive()
         self.queue.queue_list.clear()
-
         self.set_meta("loading", "loading")
+        await self.broadcast_state(
+            "shuffle",
+            ws_client=ws_client,
+            additional={"status": "Loading"},
+        )
+        if not is_active and self.PlaybackStatus == "Playing":
+            await self.async_play_pause(broadcast=False)
 
         if not is_active:
             await self.async_next(broadcast=False)
@@ -207,6 +225,16 @@ class BasePlayer(ABC):
         if len(self.queue.active_queue) == 0 and len(self.queue.passive_queue) == 0:
             return
         should_pause = self.PlaybackStatus == "Playing"
+
+        self.PlaybackStatus = "Paused" if should_pause else "Playing"
+
+        self.update_widget(
+            meta=self.get_meta(),
+            additional={"PlaybackStatus": self.PlaybackStatus, "CanGoNext": True},
+        )
+        await self.broadcast_state(
+            "PlayPause", ws_client=ws_client, broadcast=broadcast
+        )
 
         if not should_pause:
             # --- UNPAUSE (FADE-IN) ---
@@ -245,22 +273,8 @@ class BasePlayer(ABC):
                 raise MPVError(f"Не вдалося поставити на паузу: {res.get('error')}")
 
             await self.mpv.send({"command": ["set_property", "volume", 50]})
-        self.PlaybackStatus = "Paused" if should_pause else "Playing"
 
-        self.update_widget(
-            meta=self.get_meta(),
-            additional={"PlaybackStatus": self.PlaybackStatus, "CanGoNext": True},
-        )
-        await self.broadcast_state(
-            "PlayPause", ws_client=ws_client, broadcast=broadcast
-        )
-
-    async def play_current(self):
-        await self.broadcast_state(
-            "queue",
-            type="update",
-            update_queue=False,
-        )
+    async def play_current(self, *, broadcast=True, ws_client=None):
         url = self.queue.get_current_url()
         if not url:
             return
@@ -269,10 +283,8 @@ class BasePlayer(ABC):
             if meta is None:
                 asyncio.create_task(self.async_next())
                 return
-            if not self.proc:
-                await self.init_mpv(url)
-            else:
-                await self.mpv.send({"command": ["loadfile", url, "replace"]})
+
+            await self.mpv.send({"command": ["loadfile", url, "replace"]})
             try:
                 event = await asyncio.wait_for(
                     self._wait_for_event(["file_loaded", "idle"]), timeout=5.0
@@ -299,29 +311,44 @@ class BasePlayer(ABC):
                     return await self.play_current()
             self.current_retry = 0
             await self._wait_for_event(["playback_restart"], timeout=0)
-            await self.async_play_pause(broadcast=False)
+
             self.update_widget(meta=meta, additional={"CanGoNext": True})
+
+            res = {
+                "current": self.queue.get_current_url(),
+                "status": "Playing",
+            }
+            await self.broadcast_state(
+                "update",
+                broadcast=broadcast,
+                ws_client=ws_client,
+                additional=res,
+            )
+            await self.async_play_pause(broadcast=False)
         except Exception as e:
             self.log.error(f"an error in play_current {e}")
 
     async def async_next(self, *, broadcast=True, ws_client=None, count=1):
-        if self.PlaybackStatus == "Playing":
-            await self.async_play_pause(broadcast=False)
-
         self.set_meta("loading", "loading")
         self.update_widget(meta=self.get_meta(), additional={"CanGoNext": False})
-
+        await self.broadcast_state(
+            "pre_next",
+            broadcast=broadcast,
+            ws_client=ws_client,
+            additional={"status": "Loading"},
+            update_queue=False,
+        )
+        if self.PlaybackStatus == "Playing":
+            await self.async_play_pause(broadcast=False)
         next_step = self.queue.advance_next(count)
 
         if next_step in ("play_active", "play_passive"):
-            await self.play_current()
-
             try:
                 self.queue.queue_list = self.queue.queue_list[max(1, count) :]
             except Exception:
                 pass
 
-            res = {"current": self.queue.get_current_url()}
+            res = {"current": self.queue.get_current_url(), "status": "Loading"}
             await self.broadcast_state(
                 "Next",
                 broadcast=broadcast,
@@ -329,11 +356,13 @@ class BasePlayer(ABC):
                 additional=res,
                 update_queue=True,
             )
+            await self.play_current(broadcast=broadcast)
         else:
             await self.async_stop(ws_client=ws_client, broadcast=broadcast)
 
     async def async_stop(self, *, ws_client=None, broadcast=True):
         try:
+            await self.mpv.send({"command": ["set_property", "pause", True]})
             await self.mpv.send({"command": ["stop"]})
         except Exception:
             pass

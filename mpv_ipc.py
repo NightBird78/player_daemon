@@ -83,7 +83,7 @@ class MPV:
                     # elif response.get("event") == "start-file":
                     # await self.event_queue.put({"type": "start_file"})
                     else:
-                        self.log.info(response)
+                        self.log.debug(response)
                 except json.JSONDecodeError:
                     continue
         except Exception as e:

@@ -607,7 +607,9 @@
         function handleServerData(data) {
             if (data.type === "action") {
                 addLog(actionLog, actionLogMob, `${data.action} -> ${data.status || 'N/A'}`, "act-tag");
-                if (["Next", "Stop/End", "init"].includes(data.action)) progressBar.style.width = "0%";
+                if (["Next", "Stop/End", "init"].includes(data.action)) {
+                    progressBar.style.width = `${data.percent || 0}%`;
+                }
             } 
             else if (data.type === "response") {
                 addLog(responseLog, responseLogMob, `Status: ${data.status} | Mode: ${data.mode}`, "res-tag");

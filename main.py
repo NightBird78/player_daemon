@@ -19,7 +19,7 @@ async def event_processor(player):
         if event["type"] == "percent_changed":
             current_percent = int(event["value"])
 
-            if current_percent != last_percent:
+            if current_percent != last_percent and player.PlaybackStatus == "Playing":
                 last_percent = current_percent
                 await ws_broadcast(
                     {
