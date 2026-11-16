@@ -21,7 +21,9 @@ def create_player():
         case "linux":
             if hasattr(sys, "getandroidapilevel"):
                 log.info("detected android-like")
-                return STANDALONEPlayer(), asyncio.new_event_loop()
+                from standalone_player import StandalonePlayer
+
+                return StandalonePlayer(), asyncio.new_event_loop()
 
             log.info("detected linux")
             import gbulb
@@ -40,4 +42,6 @@ def create_player():
             return player, asyncio.new_event_loop()
         case _:
             log.info("Standalone mode")
-            return STANDALONEPlayer(), asyncio.new_event_loop()
+            from standalone_player import StandalonePlayer
+
+            return StandalonePlayer(), asyncio.new_event_loop()
