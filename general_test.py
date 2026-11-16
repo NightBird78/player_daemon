@@ -31,6 +31,7 @@ GLib.Variant = lambda t, v: MagicMock(unpack=lambda: v)
 import server
 from mpris_player import MPRISPlayer
 from smtc_player import SMTCPlayer
+from standalone_player import StandalonePlayer
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -63,10 +64,21 @@ class WSMessageManager:
 # --- Фікстури ---
 
 
-@pytest.fixture(params=["linux", "windows"], ids=["OS: Linux", "OS: Windows"])
+@pytest.fixture(
+    params=["linux", "windows", "standalone"],
+    ids=["OS: Linux", "OS: Windows", "OS: Headless"],
+)
 def player(request, mocker):
     mocker.patch("base_player.subprocess.Popen", return_value=MagicMock(pid=1234))
     mocker.patch("base_player.cleanup_socket")
+
+    match request.param:
+        case "linux":
+            p = MPRISPlayer()
+        case "windows":
+            p = SMTCPlayer(None)
+        case "standalone":
+            p = StandalonePlayer()
 
     p = MPRISPlayer() if request.param == "linux" else SMTCPlayer(None)
     p.steps = 1
@@ -378,6 +390,8 @@ async def test_ws_shuffle_passive_while_active(mock_shuffle, player, ws_manager)
 
     player.PlaybackStatus = "Playing"
 
+    player.set_meta("title1", "artist1")
+
     await ws_manager.ws.send_json({"cmd": "control", "action": "shuffle"})
 
     response = await ws_manager.wait_for_type("response")
@@ -385,6 +399,8 @@ async def test_ws_shuffle_passive_while_active(mock_shuffle, player, ws_manager)
 
     assert response["passive_index"] == -1
     assert len(resp_loading["queue"]) == 3
+
+    assert resp_loading["metadata"] == {"title": "title1", "artist": ["artist1"]}
 
     assert list(player.queue.passive_queue) == expected_result
 

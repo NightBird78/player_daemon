@@ -207,7 +207,8 @@ class BasePlayer(ABC):
         is_active = self.queue.current_mode == "active"
         self.queue.shuffle_passive()
         self.queue.queue_list.clear()
-        self.set_meta("loading", "loading")
+        if not is_active:
+            self.set_meta("loading", "loading")
         await self.broadcast_state(
             "shuffle",
             ws_client=ws_client,
