@@ -7,7 +7,6 @@ class StandalonePlayer(BasePlayer):
         super().__init__(STANDALONE_SOCKET)
 
     def get_meta(self):
-        print(self.Metadata)
         return self.Metadata
 
     def set_meta(self, title, artist):
