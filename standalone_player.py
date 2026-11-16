@@ -7,6 +7,7 @@ class StandalonePlayer(BasePlayer):
         super().__init__(STANDALONE_SOCKET)
 
     def get_meta(self):
+        print(self.Metadata)
         return self.Metadata
 
     def set_meta(self, title, artist):
@@ -14,5 +15,5 @@ class StandalonePlayer(BasePlayer):
             artist = [artist]
         self.Metadata = {"title": title, "artist": artist}
 
-    def update_widget(self, **kw):
-        pass
+    def update_widget(self, meta, **kw):
+        self.set_meta(meta["title"], meta["artist"])
