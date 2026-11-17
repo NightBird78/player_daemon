@@ -7,6 +7,12 @@ Welcome to the **Advanced WebSocket Player Daemon**! This project allows you to 
 
 ---
 
+## Main Idea
+
+The main idea behind **Advanced WebSocket Player Daemon** is to provide a convenient and user-friendly way to control your music from anywhere. With this project, you can easily add tracks to the queue, manage playback, and enjoy your favorite songs on any device connected to the same local network.
+
+---
+
 ## Key Features
 
 - **Two Priority Queues**:
