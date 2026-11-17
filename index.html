@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cstyle%3E@media (prefers-color-scheme:dark)%7Bcircle,path%7Bstroke:%23fff%7D%7D%3C/style%3E%3Cpath d='m4 19 5-7-5-7m14 11V5l3 1'/%3E%3Ccircle cx='15' cy='16' r='3'/%3E%3C/svg%3E">
@@ -423,20 +423,20 @@
         </select>
 
         <div class="input-group">
-            <input type="text" id="messageInput" placeholder="URL або назва треку...">
+            <input type="text" id="messageInput" placeholder="URL or track name...">
             <div id="searchResults" class="search-results-dropdown"></div>
         </div>
 
         <div class="split-container">
-            <button id="sendBtn" class="send-btn main-action" onclick="searchInputMessage()" disabled>Шукати</button>
+            <button id="sendBtn" class="send-btn main-action" onclick="searchInputMessage()" disabled>Search</button>
             <div class="dropdown-wrapper">
                 <button id="arrowBtn" class="send-btn arrow-toggle" onclick="toggleDropdown(event)" disabled>
                     <span class="mdi mdi-chevron-down"></span>
                 </button>
                 
                 <div id="dropdown-elements" class="dropdown-content">
-                    <button onclick="sendInputMessage()">Додати</button>
-                    <button onclick="sendListMessage()">Локальне</button>
+                    <button onclick="sendInputMessage()">Add</button>
+                    <button onclick="sendListMessage()">Local</button>
                 </div>
             </div>
         </div>
@@ -456,9 +456,9 @@
         <div class="player-card-wrapper">
             <div class="player-card stopped">
                 <div class="track-info">
-                    <span id="player-status">Очікування...</span>
+                    <span id="player-status">Waiting...</span>
                     <div class="track-ticker-wrapper">
-                        <span id="current-track">Немає активного треку</span>
+                        <span id="current-track">No active track</span>
                     </div>
                 </div>
 
@@ -497,7 +497,7 @@
     </button>
 
     <div id="logsModal" class="logs-modal">
-        <button class="close-logs" onclick="toggleMobileLogs()">Закрити логи</button>
+        <button class="close-logs" onclick="toggleMobileLogs()">Close Logs</button>
         <div style="display: flex; flex-direction: column; gap: 10px; height: 100%; overflow: hidden;">
             <div class="log-container" style="height: 50%;">
                 <div id="action-log-mobile" class="log-box"></div>
@@ -547,7 +547,7 @@
 
             connectionTimeout = setTimeout(() => {
                 if (socket && socket.readyState !== WebSocket.OPEN) {
-                    console.log("З'єднання триває занадто довго. Примусове закриття...");
+                    console.log("Connection taking too long. Forced closure...");
                     socket.onclose = null; 
                     try { socket.close(); } catch(e) {}
             
@@ -557,7 +557,7 @@
 
             socket.onopen = () => {
                 if (connectionTimeout) clearTimeout(connectionTimeout);
-                addLog(responseLog, responseLogMob, "З'єднання встановлено", "res-tag"); 
+                addLog(responseLog, responseLogMob, "Connection established", "res-tag"); 
                 setUIState(true); 
             };
 
@@ -573,7 +573,7 @@
             };
     
             socket.onerror = (error) => {
-                console.error("Помилка WebSocket:", error);
+                console.error("WebSocket error:", error);
             };
         }
 
@@ -623,7 +623,7 @@
                 addLog(responseLog, responseLogMob, data.warning, "warn-tag");
             }
             else if (data.type === "search_result") {
-                addLog(responseLog, responseLogMob, `search result`, "res-tag");
+                addLog(responseLog, responseLogMob, `Search result`, "res-tag");
                 
                 searchResults.innerHTML = '';
                 if (data.search_result && data.search_result.length > 0) {
@@ -669,10 +669,10 @@
             const formatCount = (size, index) => isStopped ? '0/0' : `${size > 0 ? index + 1 : 0}/${size || 0}`;
             document.getElementById('queue-count').innerText = formatCount(data.active_size, data.active_index);
             document.getElementById('passive-count').innerText = formatCount(data.passive_size, data.passive_index);
-            document.getElementById('player-status').innerText = isStopped ? "Очікування..." : (data.status || "Грає");
+            document.getElementById('player-status').innerText = isStopped ? "Waiting..." : (data.status || "Playing");
             
             const trackEl = document.getElementById('current-track');
-            const newTitle = !isStopped && data.metadata?.title ? data.metadata.title : "Немає активного треку";
+            const newTitle = !isStopped && data.metadata?.title ? data.metadata.title : "No active track";
             
             trackEl.classList.remove('marquee');
             trackEl.innerText = newTitle;
@@ -728,28 +728,28 @@
             const safeUrl = escapeHtml(trackUrl);
         
             if (!isFirst) {
-                buttons.push(`<button class="action-next" data-action="next" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Відтворити наступним</button>`);
+                buttons.push(`<button class="action-next" data-action="next" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Play next</button>`);
             }
         
             const canMoveUp = !isFirst && !isSecond && !(isPassive && prevTrack && prevTrack.type === 'active');
             if (canMoveUp) {
-                buttons.push(`<button data-action="move_up" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Перемістити вище</button>`);
+                buttons.push(`<button data-action="move_up" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Move up</button>`);
             }
         
             const canMoveDown = !isLast && !(!isPassive && nextTrack && nextTrack.type === 'passive');
             if (canMoveDown) {
-                buttons.push(`<button data-action="move_down" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Перемістити нижче</button>`);
+                buttons.push(`<button data-action="move_down" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Move down</button>`);
             }
         
             const actionType = isPassive ? 'to_active' : 'to_passive';
-            const labelType = isPassive ? 'В активні' : 'В пасивні';
+            const labelType = isPassive ? 'To active' : 'To passive';
             buttons.push(`<button data-action="${actionType}" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">${labelType}</button>`);
         
             if (isPassive) {
-                buttons.push(`<button data-action="postpone" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Відкласти</button>`);
+                buttons.push(`<button data-action="postpone" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)">Postpone</button>`);
             }
         
-            buttons.push(`<button data-action="remove" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)" style="color: #ff5252;">Прибрати</button>`);
+            buttons.push(`<button data-action="remove" data-url="${safeUrl}" data-type="${currentType}" onclick="sendTrackAction(this.dataset.action, this.dataset.url, this.dataset.type)" style="color: #ff5252;">Remove</button>`);
         
             if (buttons.length > 0) {
                 buttons[0] = buttons[0].replace('<button', '<button style="border-radius: 8px 8px 0 0;"');
@@ -871,7 +871,7 @@
         
         window.onresize = () => {
             const trackEl = document.getElementById('current-track');
-            if (trackEl.innerText !== "Немає активного треку" && trackEl.innerText !== "З'єднання встановлено") {
+            if (trackEl.innerText !== "No active track" && trackEl.innerText !== "Connection established") {
                 trackEl.classList.remove('marquee');
                 if (trackEl.scrollWidth > trackEl.parentElement.clientWidth) {
                     trackEl.classList.add('marquee');
